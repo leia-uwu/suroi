@@ -40,7 +40,8 @@ export class Bullet {
         ).setRotation(Phaser.Math.Angle.BetweenPoints(this.initialPosition, finalPosition))
             .setDepth(3)
             .setOrigin(1, 0.5)
-            .setScale(0, ballistics.tracerWidth ?? 1);
+            .setScale(0, ballistics.tracerWidth ?? 1)
+            .setPipeline("Light2D");
 
         this.moveTween = scene.tweens.add({
             targets: this.image,

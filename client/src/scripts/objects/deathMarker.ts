@@ -20,13 +20,13 @@ export class DeathMarker extends GameObject {
     constructor(game: Game, scene: GameScene, type: ObjectType<ObjectCategory.DeathMarker>, id: number) {
         super(game, scene, type, id);
 
-        this.image = this.scene.add.image(0, 0, "main", "death_marker.svg");
+        this.image = this.scene.add.image(0, 0, "main", "death_marker.svg").setPipeline("Light2D");
         this.playerNameText = this.scene.add.text(0, 95, "",
             {
                 fontSize: 36,
                 fontFamily: "Inter"
             })
-            .setOrigin(0.5, 0.5)
+            .setOrigin(0.5, 0.5).setPipeline("Light2D")
             .setShadow(2, 2, "#000", 2, true, true);
         this.container.add([this.image, this.playerNameText]).setDepth(1);
     }

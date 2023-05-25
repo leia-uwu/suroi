@@ -118,6 +118,8 @@ export class GameScene extends Phaser.Scene {
             this.sounds.set(sound, this.sound.add(sound));
         }
 
+        this.lights.enable().setAmbientColor(0x000000);
+
         // Draw the grid
         const GRID_WIDTH = MAP_WIDTH * 10;
         const GRID_HEIGHT = MAP_HEIGHT * 10;
@@ -142,6 +144,8 @@ export class GameScene extends Phaser.Scene {
 
         // Follow the player w/ the camera
         this.cameras.main.startFollow(this.player.container);
+
+        this.add.rectangle(0, 0, 10000, 10000, 0x49993e).setPipeline("Light2D").setScrollFactor(0).setDepth(-1);
 
         // Initializes sounds
         [

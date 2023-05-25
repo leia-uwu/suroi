@@ -16,7 +16,13 @@ import {
     PLAYER_RADIUS
 } from "../../../../common/src/constants";
 
-import { vClone, type Vector } from "../../../../common/src/utils/vector";
+import {
+    vClone,
+    type Vector,
+    vRotate,
+    v
+} from "../../../../common/src/utils/vector";
+
 import type { SuroiBitStream } from "../../../../common/src/utils/suroiBitStream";
 import { randomBoolean } from "../../../../common/src/utils/random";
 import { distanceSquared } from "../../../../common/src/utils/math";
@@ -64,6 +70,10 @@ export class Player extends GameObject<ObjectCategory.Player> {
     rightFistAnim!: Phaser.Tweens.Tween;
     weaponAnim!: Phaser.Tweens.Tween;
 
+    weapon = ObjectType.fromString(ObjectCategory.Loot, "fists");
+
+    light!: Phaser.GameObjects.Light;
+
     distSinceLastFootstep = 0;
 
     helmetLevel = 0;
@@ -77,13 +87,13 @@ export class Player extends GameObject<ObjectCategory.Player> {
         this.isActivePlayer = isActivePlayer;
 
         this.images = {
-            vest: this.scene.add.image(0, 0, "main").setVisible(false),
-            body: this.scene.add.image(0, 0, "main", "player_base.svg"),
-            leftFist: this.scene.add.image(0, 0, "main", "player_fist.svg"),
-            rightFist: this.scene.add.image(0, 0, "main", "player_fist.svg"),
-            backpack: this.scene.add.image(0, 0, "main").setPosition(-55, 0).setVisible(false),
-            helmet: this.scene.add.image(0, 0, "main").setPosition(-5, 0).setVisible(false),
-            weapon: this.scene.add.image(0, 0, "main"),
+            vest: this.scene.add.image(0, 0, "main").setVisible(false).setPipeline("Light2D"),
+            body: this.scene.add.image(0, 0, "main", "player_base.svg").setPipeline("Light2D"),
+            leftFist: this.scene.add.image(0, 0, "main", "player_fist.svg").setPipeline("Light2D"),
+            rightFist: this.scene.add.image(0, 0, "main", "player_fist.svg").setPipeline("Light2D"),
+            backpack: this.scene.add.image(0, 0, "main").setPosition(-55, 0).setVisible(false).setPipeline("Light2D"),
+            helmet: this.scene.add.image(0, 0, "main").setPosition(-5, 0).setVisible(false).setPipeline("Light2D"),
+            weapon: this.scene.add.image(0, 0, "main").setPipeline("Light2D"),
             bloodEmitter: this.scene.add.particles(0, 0, "main", {
                 frame: "blood_particle.svg",
                 quantity: 1,
@@ -93,7 +103,7 @@ export class Player extends GameObject<ObjectCategory.Player> {
                 scale: { start: 0.75, end: 1 },
                 alpha: { start: 1, end: 0 },
                 emitting: false
-            })
+            }).setPipeline("Light2D")
         };
         this.container.add([
             this.images.vest,
@@ -108,12 +118,21 @@ export class Player extends GameObject<ObjectCategory.Player> {
 
         this.updateFistsPosition(false);
         this.updateWeapon();
+        this.light = this.scene.lights.addLight(0, 0, 1000, 0xeeeeee, 1);
     }
 
     override deserializePartial(stream: SuroiBitStream): void {
         // Position and rotation
         if (this.position !== undefined) this.oldPosition = vClone(this.position);
         this.position = stream.readPosition();
+
+        this.scene.tweens.add({
+            targets: this.light,
+            x: this.position.x * 20,
+            y: this.position.y * 20,
+            duration: 30,
+            ease: "none"
+        });
 
         if (this.oldPosition !== undefined) {
             this.distSinceLastFootstep += distanceSquared(this.oldPosition, this.position);
@@ -238,7 +257,18 @@ export class Player extends GameObject<ObjectCategory.Player> {
                             duration: 50,
                             yoyo: true
                         });
-                    }
+
+                        const rotated = vRotate(v(weaponDef.length, 0), this.rotation);
+                        const position = v(this.position.x + rotated.x, this.position.y + rotated.y);
+                        const light = this.scene.lights.addLight(position.x * 20, position.y * 20, 1000, 0xffab4b, weaponDef.fireDelay / 100);
+                        this.scene.tweens.add({
+                            targets: light,
+                            intensity: 0,
+                            duration: 200
+                        }).on("complete", () => {
+                            this.scene.lights.removeLight(light);
+                        });
+                        }
                     break;
                 }
                 case AnimationType.GunClick: {
@@ -384,5 +414,13 @@ export class Player extends GameObject<ObjectCategory.Player> {
         this.images.rightFist.destroy(true);
         this.images.weapon.destroy(true);
         this.images.bloodEmitter.destroy(true);
+
+        this.scene.tweens.add({
+            targets: this.light,
+            intensity: 0,
+            duration: 1000
+        }).on("complete", () => {
+            this.scene.lights.removeLight(this.light);
+        });
     }
 }

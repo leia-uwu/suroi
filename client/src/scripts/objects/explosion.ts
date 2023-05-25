@@ -29,7 +29,8 @@ export function explosion(game: Game, scene: GameScene, type: ObjectType<ObjectC
     const definition = type.definition;
     const phaserPos = vMul(position, 20);
 
-    const image = scene.add.image(phaserPos.x, phaserPos.y, "main", definition.animation.frame).setScale(0);
+    const image = scene.add.image(phaserPos.x, phaserPos.y, "main", definition.animation.frame).setScale(0).setPipeline("Light2D");
+
     const emitter = scene.add.particles(phaserPos.x, phaserPos.y, "main", {
         frame: definition.particles.frame,
         lifespan: definition.particles.duration,
@@ -43,12 +44,27 @@ export function explosion(game: Game, scene: GameScene, type: ObjectType<ObjectC
         },
         particleClass: ExplosionParticle,
         emitting: false
-    });
-
+    }).setPipeline("Light2D");
     emitter.explode(definition.particles.count);
 
     // Destroy particle emitter.
     setTimeout(() => { emitter.destroy(); }, definition.particles.duration);
+
+    const light = scene.lights.addLight(phaserPos.x, phaserPos.y, 10, 0xffffff, 20);
+    scene.tweens.add({
+        targets: light,
+        radius: definition.animation.scale * 1000,
+        ease: "Expo.Out",
+        duration: definition.animation.duration * 2
+    });
+    scene.tweens.add({
+        targets: light,
+        intensity: 0,
+        duration: definition.animation.duration * 3,
+        ease: "Expo.Out"
+    }).on("complete", () => {
+        scene.lights.removeLight(light);
+    });
 
     scene.tweens.add({
         targets: image,

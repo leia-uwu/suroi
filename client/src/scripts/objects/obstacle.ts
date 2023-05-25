@@ -18,6 +18,7 @@ export class Obstacle extends GameObject<ObjectCategory.Obstacle, ObstacleDefini
 
     image: Phaser.GameObjects.Image;
     emitter: Phaser.GameObjects.Particles.ParticleEmitter;
+    light!: Phaser.GameObjects.Light;
 
     isNew = true;
 
@@ -25,10 +26,23 @@ export class Obstacle extends GameObject<ObjectCategory.Obstacle, ObstacleDefini
         super(game, scene, type, id);
 
         // the image and emitter key, position and other properties are set after the obstacle is deserialized
-        this.image = this.scene.add.image(0, 0, "main");
+        this.image = this.scene.add.image(0, 0, "main").setPipeline("Light2D");
         this.container.add(this.image);
         // Adding the emitter to the container messes up the layering of particles and they will appear bellow loot
-        this.emitter = this.scene.add.particles(0, 0, "main");
+        this.emitter = this.scene.add.particles(0, 0, "main").setPipeline("Light2D");
+
+        if (this.type.idString.includes("barrel")) {
+            this.light = this.scene.lights.addLight(0, 0, 300, 0x1aff00, 2);
+            this.scene.tweens.add({
+                targets: this.light,
+                radius: 250,
+                yoyo: true,
+                repeat: -1,
+                ease: "Sine.easeInOut",
+                duration: 2000
+            });
+        }
+
     }
 
     override deserializePartial(stream: SuroiBitStream): void {
@@ -54,6 +68,7 @@ export class Obstacle extends GameObject<ObjectCategory.Obstacle, ObstacleDefini
 
         // Change the texture of the obstacle and play a sound when it's destroyed
         if (!this.destroyed && destroyed) {
+            this.scene.lights.removeLight(this.light);
             this.destroyed = true;
             if (!this.isNew) {
                 this.scene.playSound(`${definition.material}_destroyed`);
@@ -84,6 +99,9 @@ export class Obstacle extends GameObject<ObjectCategory.Obstacle, ObstacleDefini
 
         this.container.setRotation(this.rotation)
             .setDepth(this.destroyed ? 0 : definition.depth ?? 0);
+            
+        if (this.light) this.light.setPosition(this.container.x, this.container.y);
+        if (this.destroyed) this.scene.lights.removeLight(this.light);
 
         // If there are multiple particle variations, generate a list of variation image names
         const particleImage = definition.frames?.particle ?? `${definition.idString}_particle`;
@@ -112,5 +130,6 @@ export class Obstacle extends GameObject<ObjectCategory.Obstacle, ObstacleDefini
         super.destroy();
         this.image.destroy(true);
         this.emitter.destroy(true);
+        this.scene.lights.removeLight(this.light);
     }
 }

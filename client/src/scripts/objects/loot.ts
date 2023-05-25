@@ -30,8 +30,8 @@ export class Loot extends GameObject<ObjectCategory.Loot, LootDefinition> {
         super(game, scene, type, id);
 
         this.images = {
-            background: this.scene.add.image(0, 0, "main"),
-            item: this.scene.add.image(0, 0, "main", `${this.type.idString}.svg`)
+            background: this.scene.add.image(0, 0, "main").setPipeline("Light2D"),
+            item: this.scene.add.image(0, 0, "main", `${this.type.idString}.svg`).setPipeline("Light2D")
         };
 
         this.container.add([this.images.background, this.images.item]).setDepth(2);

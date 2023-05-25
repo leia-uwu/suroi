@@ -80,6 +80,7 @@ $(() => {
         type: Phaser.WEBGL,
         scene: [MenuScene, GameScene, MinimapScene],
         backgroundColor: GRASS_COLOR,
+        maxLights: 25,
         scale: {
             mode: Phaser.Scale.RESIZE,
             autoCenter: Phaser.Scale.CENTER_BOTH,
