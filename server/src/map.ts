@@ -2,9 +2,9 @@ import { Buildings, type BuildingDefinition } from "../../common/src/definitions
 import { Decals } from "../../common/src/definitions/decals";
 import { Obstacles, RotationMode, type ObstacleDefinition } from "../../common/src/definitions/obstacles";
 import { type Orientation, type Variation } from "../../common/src/typings";
-import { CircleHitbox, ComplexHitbox, type PolygonHitbox, RectangleHitbox, type Hitbox } from "../../common/src/utils/hitbox";
-import { River, TerrainGrid, generateTerrain } from "../../common/src/utils/mapUtils";
-import { addAdjust, addOrientations, angleBetweenPoints, distance, velFromAngle } from "../../common/src/utils/math";
+import { CircleHitbox, ComplexHitbox, PolygonHitbox, RectangleHitbox, type Hitbox } from "../../common/src/utils/hitbox";
+import { RiverData, TerrainGrid, generateTerrain } from "../../common/src/utils/mapUtils";
+import { addAdjust, addOrientations, angleBetweenPoints, lineIntersectsLine, velFromAngle } from "../../common/src/utils/math";
 import { type ReferenceTo, ObstacleSpecialRoles, type ReifiableDef, MapObjectSpawnMode } from "../../common/src/utils/objectDefinitions";
 import { SeededRandom, pickRandomInArray, random, randomBoolean, randomFloat, randomRotation, randomVector } from "../../common/src/utils/random";
 import { v, vAdd, vClone, type Vector } from "../../common/src/utils/vector";
@@ -17,6 +17,7 @@ import { Decal } from "./objects/decal";
 import { Obstacle } from "./objects/obstacle";
 import { Logger, getLootTableLoot, getRandomIdString } from "./utils/misc";
 import { ObjectCategory } from "../../common/src/constants";
+import { type River } from "../../common/src/utils/river";
 
 export class Map {
     readonly game: Game;
@@ -31,12 +32,14 @@ export class Map {
 
     readonly seed = random(0, 2 ** 31);
 
-    readonly rivers: River[];
+    readonly rivers: RiverData[] = [];
 
     readonly riversHitboxes: Array<{
         readonly water: PolygonHitbox
         readonly bank: PolygonHitbox
     }>;
+
+    generatedRivers: River[] = [];
 
     readonly terrainGrid: TerrainGrid;
 
@@ -91,15 +94,14 @@ export class Map {
 
         const randomGenerator = new SeededRandom(this.seed);
 
-        let hasWideRiver = true;
         const riverPadding = mapDefinition.oceanSize - 30;
+
+        let hasWideRiver = true;
 
         const mapRect = new RectangleHitbox(
             v(riverPadding, riverPadding),
             v(this.width - riverPadding, this.height - riverPadding)
         );
-
-        this.rivers = [];
 
         const riverCount = mapDefinition.rivers ?? 0;
         while (this.rivers.length < riverCount) {
@@ -142,7 +144,14 @@ export class Map {
             this.rivers
         );
 
-        this.riversHitboxes = terrain.rivers;
+        this.generatedRivers = terrain.rivers;
+
+        this.riversHitboxes = terrain.rivers.map((river) => {
+            return {
+                water: new PolygonHitbox(...river.waterPoly),
+                bank: new PolygonHitbox(...river.shorePoly)
+            };
+        });
 
         // Generate buildings
         for (const building in mapDefinition.buildings) {
@@ -160,10 +169,10 @@ export class Map {
 
         if (mapDefinition.genCallback) mapDefinition.genCallback(this);
 
-        for (const river of terrain.rivers) {
+        for (const river of this.riversHitboxes) {
             this.terrainGrid.addFloor("water", river.water);
         }
-        for (const river of terrain.rivers) {
+        for (const river of this.riversHitboxes) {
             this.terrainGrid.addFloor("sand", river.bank);
         }
         this.terrainGrid.addFloor("grass", terrain.grass);
@@ -196,52 +205,48 @@ export class Map {
     ): void {
         const riverPoints: Vector[] = [];
 
-        const maxDeviation = 0.4;
-        const minDeviation = 0.2;
-
-        const minSplitDeviation = 0.5;
-        const maxSplitDeviation = 0.8;
+        const maxDeviation = 0.225;
+        const minDeviation = 0;
 
         riverPoints.push(startPos);
 
         let angle = startAngle;
 
-        let distanceSinceLastSplit = 0;
-
-        for (let i = 1; i < 100; i++) {
-            distanceSinceLastSplit++;
-
+        for (let i = 1; i < 200; i++) {
             angle = angle + randomGenerator.get(
                 -randomGenerator.get(minDeviation, maxDeviation),
                 randomGenerator.get(minDeviation, maxDeviation)
             );
 
-            const pos = riverPoints[i] = vAdd(riverPoints[i - 1], velFromAngle(angle, randomGenerator.get(50, 60)));
+            const pos = riverPoints[i] = vAdd(riverPoints[i - 1], velFromAngle(angle, randomGenerator.get(10, 20)));
 
-            if (width > 40 &&
-                distanceSinceLastSplit > 5 &&
-                distance(pos, v(this.width / 2, this.height / 2)) < 400 &&
-                Math.random() < 0.3) {
-                distanceSinceLastSplit = 0;
+            let collided = false;
+            for (const river of this.rivers) {
+                for (let j = 1; j < river.points.length; j++) {
+                    const previous = river.points[j - 1];
 
-                this.generateRiver(
-                    pos,
-                    angle + randomGenerator.get(
-                        -randomGenerator.get(minSplitDeviation, maxSplitDeviation),
-                        randomGenerator.get(minSplitDeviation, maxSplitDeviation)),
-                    width / 2,
-                    randomGenerator,
-                    mapRect
-                );
+                    const intersection = lineIntersectsLine(previous, river.points[j], pos, riverPoints[i - 1]);
+
+                    if (intersection) {
+                        collided = true;
+                        riverPoints[i] = intersection;
+                        break;
+                    }
+                }
+
+                if (collided) break;
             }
 
-            if (!mapRect.isPointInside(pos)) break;
+            if (!mapRect.isPointInside(pos) || collided) break;
+        }
+
+        if (riverPoints.length < 10) {
+            return;
         }
 
         this.rivers.push(
-            new River(
+            new RiverData(
                 width,
-                width / 3,
                 riverPoints
             )
         );

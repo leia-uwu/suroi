@@ -3,7 +3,7 @@ import { Container, Graphics, LINE_CAP, RenderTexture, Sprite, Text, Texture, is
 import "@pixi/graphics-extras";
 
 import { GameConstants, GasState, ObjectCategory, ZIndexes } from "../../../../common/src/constants";
-import { CircleHitbox, RectangleHitbox } from "../../../../common/src/utils/hitbox";
+import { CircleHitbox, PolygonHitbox, RectangleHitbox } from "../../../../common/src/utils/hitbox";
 import { FloorTypes, TerrainGrid, generateTerrain } from "../../../../common/src/utils/mapUtils";
 import { addAdjust, lerp } from "../../../../common/src/utils/math";
 import { v, vClone, vMul, type Vector } from "../../../../common/src/utils/vector";
@@ -150,7 +150,7 @@ export class Minimap {
             ctx.endHole();
 
             for (const river of terrain.rivers) {
-                const bank = river.bank.points;
+                const bank = river.shorePoly;
 
                 ctx.fill.color = COLORS.riverBank.toNumber();
 
@@ -158,7 +158,7 @@ export class Minimap {
             }
 
             for (const river of terrain.rivers) {
-                const water = river.water.points;
+                const water = river.waterPoly;
 
                 ctx.fill.color = COLORS.water.toNumber();
 
@@ -277,11 +277,11 @@ export class Minimap {
         mapRender.sortChildren();
 
         for (const river of terrain.rivers) {
-            this.terrainGrid.addFloor("water", river.water);
+            this.terrainGrid.addFloor("water", new PolygonHitbox(...river.waterPoly));
         }
 
         for (const river of terrain.rivers) {
-            this.terrainGrid.addFloor("sand", river.bank);
+            this.terrainGrid.addFloor("sand", new PolygonHitbox(...river.shorePoly));
         }
 
         this.terrainGrid.addFloor("grass", terrain.grass);

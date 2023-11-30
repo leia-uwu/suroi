@@ -1,8 +1,8 @@
-import { intersection } from "greiner-hormann";
 import { PolygonHitbox, RectangleHitbox, type Hitbox } from "./hitbox";
-import { angleBetweenPoints, clamp } from "./math";
+import { clamp } from "./math";
 import { SeededRandom } from "./random";
-import { v, vAdd, vClone, vRotate, vSub, type Vector } from "./vector";
+import { v, vClone, type Vector } from "./vector";
+import { River } from "./river";
 
 export function jaggedRectangle(
     hitbox: RectangleHitbox,
@@ -67,14 +67,12 @@ export const FloorTypes: Record<string, FloorDefinition> = {
     }
 };
 
-export class River {
+export class RiverData {
     readonly width: number;
-    readonly bankWidth: number;
     readonly points: Vector[];
 
-    constructor(width: number, bankWidth: number, points: Vector[]) {
+    constructor(width: number, points: Vector[]) {
         this.width = width;
-        this.bankWidth = bankWidth;
         this.points = points;
     }
 }
@@ -85,14 +83,11 @@ export function generateTerrain(
     oceanSize: number,
     beachSize: number,
     seed: number,
-    rivers: River[]
+    rivers: RiverData[]
 ): {
         readonly beach: PolygonHitbox
         readonly grass: PolygonHitbox
-        readonly rivers: Array<{
-            readonly water: PolygonHitbox
-            readonly bank: PolygonHitbox
-        }>
+        readonly rivers: River[]
     } {
     // generate beach and grass
     const beachPadding = oceanSize + beachSize;
@@ -118,117 +113,7 @@ export function generateTerrain(
     const generatedRivers: ReturnType<typeof generateTerrain>["rivers"] = [];
 
     for (const river of rivers) {
-        // TODO Refactor this mess
-        const getRiverPolygon = (width: number): PolygonHitbox => {
-            const points: Vector[] = [];
-
-            points.push(
-                vAdd(
-                    river.points[0],
-                    vRotate(
-                        v(width + 10, 0),
-                        angleBetweenPoints(river.points[0], river.points[1]) + Math.PI / 2
-                    )
-                )
-            );
-
-            // first loop, add points from start to end
-            for (let i = 1, l = river.points.length - 1; i < l; i++) {
-                const prev = river.points[i - 1];
-                const current = river.points[i];
-                const next = river.points[i + 1];
-
-                const prevCurrent = vSub(current, prev);
-                const nextCurrent = vSub(current, next);
-
-                const prevAngle = angleBetweenPoints(v(0, 0), prevCurrent);
-                const nextAngle = angleBetweenPoints(v(0, 0), nextCurrent);
-
-                const angleToDivide = Math.abs(prevAngle - nextAngle);
-                const angle = angleToDivide / 2 + (
-                    prevAngle > nextAngle // convex check
-                        ? angleBetweenPoints(current, next)
-                        : angleBetweenPoints(prev, current)
-                );
-
-                points.push(
-                    vAdd(
-                        current,
-                        vRotate(
-                            v(width, 0),
-                            angle
-                        )
-                    )
-                );
-            }
-
-            points.push(
-                vAdd(
-                    river.points[river.points.length - 1],
-                    vRotate(
-                        v(width + 10, 0),
-                        angleBetweenPoints(river.points[river.points.length - 2], river.points[river.points.length - 1]) + Math.PI / 2
-                    )
-                )
-            );
-
-            points.push(
-                vAdd(
-                    river.points[river.points.length - 1],
-                    vRotate(
-                        v(width + 10, 0),
-                        angleBetweenPoints(river.points[river.points.length - 2], river.points[river.points.length - 1]) - Math.PI / 2
-                    )
-                )
-            );
-
-            // second loop, same thing but reverse and with inverted point
-            for (let l = river.points.length, i = l - 2; i > 0; i--) {
-                const prev = river.points[i - 1];
-                const current = river.points[i];
-                const next = river.points[i + 1];
-
-                const prevCurrent = vSub(prev, current);
-                const nextCurrent = vSub(next, current);
-
-                const prevAngle = angleBetweenPoints(v(0, 0), prevCurrent);
-                const nextAngle = angleBetweenPoints(v(0, 0), nextCurrent);
-
-                const angleToDivide = Math.abs(prevAngle - nextAngle);
-                const angle = angleToDivide / 2 + (
-                    prevAngle > nextAngle // convex check
-                        ? angleBetweenPoints(current, next)
-                        : angleBetweenPoints(prev, current)
-                );
-
-                points.push(
-                    vSub(
-                        current,
-                        vRotate(
-                            v(width, 0),
-                            angle
-                        )
-                    )
-                );
-            }
-
-            points.push(
-                vAdd(
-                    river.points[0],
-                    vRotate(
-                        v(width + 10, 0),
-                        angleBetweenPoints(river.points[0], river.points[1]) - Math.PI / 2
-                    )
-                )
-            );
-
-            return new PolygonHitbox(...intersection(points, beach.points)[0]);
-        };
-
-        generatedRivers.push({
-            water: getRiverPolygon(river.width / 2),
-            bank: getRiverPolygon(river.width / 2 + river.bankWidth)
-        });
+        generatedRivers.push(new River(river.points, river.width / 2, generatedRivers, beachHitbox, beach.points));
     }
 
     return {

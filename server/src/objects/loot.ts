@@ -2,7 +2,7 @@ import { GameConstants, ObjectCategory, PlayerActions } from "../../../common/sr
 import { ArmorType } from "../../../common/src/definitions/armors";
 import { Loots, type LootDefinition } from "../../../common/src/definitions/loots";
 import { PickupPacket } from "../../../common/src/packets/pickupPacket";
-import { CircleHitbox } from "../../../common/src/utils/hitbox";
+import { CircleHitbox, PolygonHitbox } from "../../../common/src/utils/hitbox";
 import { circleCircleIntersection, clamp, distance, velFromAngle } from "../../../common/src/utils/math";
 import { ItemType, LootRadius, type ReifiableDef } from "../../../common/src/utils/objectDefinitions";
 import { type ObjectsNetData } from "../../../common/src/utils/objectsSerializations";
@@ -53,8 +53,21 @@ export class Loot extends GameObject<ObjectCategory.Loot> {
         const oldPosition = vClone(this.position);
 
         const moving = Math.abs(this.velocity.x) > 0.001 ||
-        Math.abs(this.velocity.y) > 0.001 ||
-        vEqual(oldPosition, this.position);
+            Math.abs(this.velocity.y) > 0.001 ||
+            vEqual(oldPosition, this.position);
+
+        for (const river of this.game.map.generatedRivers) {
+            const hitbox = new PolygonHitbox(...river.waterPoly);
+
+            if (hitbox.isPointInside(this.position)) {
+                const point = river.spline.getClosestTtoPoint(this.position);
+
+                const normal = river.spline.getTangent(point);
+
+                this.push(Math.atan2(normal.y, normal.x), 1);
+                break;
+            }
+        }
 
         if (moving) {
             this.velocity = vMul(this.velocity, 0.9);

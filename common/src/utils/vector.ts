@@ -126,3 +126,7 @@ export function vInvert(a: Vector): Vector {
 export function vEqual(a: Vector, b: Vector, epsilon = 0.001): boolean {
     return Math.abs(a.x - b.x) <= epsilon && Math.abs(a.y - b.y) <= epsilon;
 }
+
+export function vPerp(a: Vector): Vector {
+    return { x: -a.y, y: a.x };
+}

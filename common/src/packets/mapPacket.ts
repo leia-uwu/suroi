@@ -2,7 +2,7 @@ import { ObjectCategory, PacketType } from "../constants";
 import { Buildings, type BuildingDefinition } from "../definitions/buildings";
 import { type ObstacleDefinition, RotationMode, Obstacles } from "../definitions/obstacles";
 import { type Variation } from "../typings";
-import { River } from "../utils/mapUtils";
+import { RiverData } from "../utils/mapUtils";
 import { type SuroiBitStream } from "../utils/suroiBitStream";
 import { type Vector } from "../utils/vector";
 import { Packet } from "./packet";
@@ -30,7 +30,7 @@ export class MapPacket extends Packet {
     oceanSize!: number;
     beachSize!: number;
 
-    rivers!: River[];
+    rivers!: RiverData[];
 
     readonly objects: MapObject[] = [];
 
@@ -52,7 +52,6 @@ export class MapPacket extends Packet {
         stream.writeBits(this.rivers.length, 4);
         for (const river of this.rivers) {
             stream.writeUint8(river.width);
-            stream.writeUint8(river.bankWidth);
 
             stream.writeUint8(river.points.length);
             for (const point of river.points) {
@@ -100,8 +99,7 @@ export class MapPacket extends Packet {
 
         this.rivers = Array.from(
             { length: stream.readBits(4) },
-            () => new River(
-                stream.readUint8(),
+            () => new RiverData(
                 stream.readUint8(),
                 Array.from(
                     { length: stream.readUint8() },

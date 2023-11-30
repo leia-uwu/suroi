@@ -108,7 +108,7 @@ export const GameConstants = {
     // !!!!! NOTE: Increase this every time a bit stream change is made between latest release and master
     // or a new item is added to a definition list
     protocolVersion: 9,
-    gridSize: 16,
+    gridSize: 32,
     // ticks per second
     tps: 30,
     maxPosition: 1616,
