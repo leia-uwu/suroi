@@ -7,6 +7,7 @@ import { ViteImageOptimizer } from "vite-plugin-image-optimizer";
 import { spritesheet } from "./vite-spritesheet-plugin/spritesheet-plugin";
 
 const config: UserConfig = {
+    base: "",
     build: {
         rollupOptions: {
             input: {
