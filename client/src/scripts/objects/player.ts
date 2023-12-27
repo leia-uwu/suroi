@@ -89,8 +89,10 @@ export class Player extends GameObject<ObjectCategory.Player> {
         leftFistAnim?: Tween<SuroiSprite>
         rightFistAnim?: Tween<SuroiSprite>
         weaponAnim?: Tween<SuroiSprite>
+        pinAnim?: Tween<SuroiSprite>
         muzzleFlashFadeAnim?: Tween<SuroiSprite>
         muzzleFlashRecoilAnim?: Tween<SuroiSprite>
+        waterOverlayAnim?: Tween<SuroiSprite>
     } = {};
 
     private _emoteHideTimeout?: Timeout;
@@ -104,7 +106,6 @@ export class Player extends GameObject<ObjectCategory.Player> {
     hitbox = new CircleHitbox(GameConstants.player.radius);
 
     floorType = "grass";
-    waterOverlayAnim?: Tween<SuroiSprite>;
 
     constructor(game: Game, id: number, data: Required<ObjectsNetData[ObjectCategory.Player]>) {
         super(game, id);
@@ -282,7 +283,7 @@ export class Player extends GameObject<ObjectCategory.Player> {
 
     override updateFromData(data: ObjectsNetData[ObjectCategory.Player], isNew = false): void {
         // Position and rotation
-        if (this.position !== undefined) this.oldPosition = Vec.clone(this.position);
+        const oldPosition = Vec.clone(this.position);
         this.position = data.position;
         this.hitbox.position = this.position;
 
@@ -311,8 +312,8 @@ export class Player extends GameObject<ObjectCategory.Player> {
 
         if (floorType !== this.floorType) {
             if (FloorTypes[floorType].overlay) this.images.waterOverlay.setVisible(true);
-            this.waterOverlayAnim?.kill();
-            this.waterOverlayAnim = new Tween(
+            this.anims.waterOverlayAnim?.kill();
+            this.anims.waterOverlayAnim = new Tween(
                 this.game,
                 {
                     target: this.images.waterOverlay,
@@ -328,8 +329,8 @@ export class Player extends GameObject<ObjectCategory.Player> {
         }
         this.floorType = floorType;
 
-        if (this.oldPosition !== undefined) {
-            this.distSinceLastFootstep += Geometry.distanceSquared(this.oldPosition, this.position);
+        if (oldPosition !== undefined) {
+            this.distSinceLastFootstep += Geometry.distance(oldPosition, this.position);
 
             if (this.distSinceLastFootstep > 7) {
                 this.footstepSound = this.playSound(
@@ -934,25 +935,67 @@ export class Player extends GameObject<ObjectCategory.Player> {
                 const def = this.activeItem;
                 const projImage = this.images.weapon;
                 const pinImage = this.images.altWeapon;
-                pinImage.visible = true;
                 pinImage.setFrame(def.animation.cook.leftImage);
-                pinImage.setVPos(def.animation.cook.leftFist);
+                pinImage.setPos(def.animation.cook.leftFist.x, 0);
+                projImage.setFrame(def.animation.cook.cookingImage ?? def.animation.cook.liveImage);
 
                 this.anims.leftFistAnim = new Tween(
                     this.game,
                     {
                         target: this.images.leftFist,
-                        to: { x: def.animation.cook.leftFist.x },
-                        duration: 50
+                        to: { x: def.animation.cook.leftFist.x, y: 0 },
+                        duration: 150,
+                        onComplete: () => {
+                            this.anims.leftFistAnim = new Tween(
+                                this.game,
+                                {
+                                    target: this.images.leftFist,
+                                    to: { x: def.animation.cook.leftFist.x, y: def.animation.cook.leftFist.y },
+                                    duration: 150
+                                }
+                            );
+
+                            this.anims.pinAnim = new Tween(
+                                this.game, {
+                                    target: pinImage,
+                                    duration: 150,
+                                    to: {
+                                        ...Vec.add(def.animation.cook.leftFist, Vec.create(15, 0))
+                                    },
+                                    onUpdate: () => {
+                                        pinImage.visible = true;
+                                    }
+                                }
+                            );
+                        }
                     }
                 );
+
+                if (def.cookable) {
+                    this.game.particleManager.spawnParticle({
+                        frames: def.animation.cook.leverImage,
+                        lifetime: 600,
+                        position: this.position,
+                        zIndex: ZIndexes.Players + 1,
+                        speed: Vec.rotate(Vec.create(8, 8), this.rotation),
+                        rotation: this.rotation,
+                        alpha: {
+                            start: 1,
+                            end: 0
+                        },
+                        scale: {
+                            start: 0.8,
+                            end: 1
+                        }
+                    });
+                }
 
                 this.anims.weaponAnim = new Tween(
                     this.game,
                     {
                         target: projImage,
-                        to: { x: def.animation.cook.rightFist.x },
-                        duration: 50
+                        to: { x: def.animation.cook.rightFist.x, y: 10 },
+                        duration: 150
                     }
                 );
 
@@ -960,8 +1003,27 @@ export class Player extends GameObject<ObjectCategory.Player> {
                     this.game,
                     {
                         target: this.images.rightFist,
-                        to: { x: def.animation.cook.rightFist.x },
-                        duration: 50
+                        to: { x: def.animation.cook.rightFist.x, y: 10 },
+                        duration: 150,
+                        onComplete: () => {
+                            this.anims.weaponAnim = new Tween(
+                                this.game,
+                                {
+                                    target: projImage,
+                                    to: { x: def.animation.cook.rightFist.x, y: def.animation.cook.rightFist.y },
+                                    duration: 150
+                                }
+                            );
+
+                            this.anims.rightFistAnim = new Tween(
+                                this.game,
+                                {
+                                    target: this.images.rightFist,
+                                    to: { x: def.animation.cook.rightFist.x, y: def.animation.cook.rightFist.y },
+                                    duration: 150
+                                }
+                            );
+                        }
                     }
                 );
 
@@ -972,7 +1034,32 @@ export class Player extends GameObject<ObjectCategory.Player> {
                     console.warn(`Attempted to play throwable animation with non throwable item ${this.activeItem.idString}`);
                     return;
                 }
+                const pinImage = this.images.altWeapon;
+                const projImage = this.images.weapon;
+                const def = this.activeItem;
+
+                if (!def.cookable) {
+                    this.game.particleManager.spawnParticle({
+                        frames: def.animation.cook.leverImage,
+                        lifetime: 600,
+                        position: this.position,
+                        zIndex: ZIndexes.Players + 1,
+                        speed: Vec.rotate(Vec.create(8, 8), this.rotation),
+                        rotation: this.rotation,
+                        alpha: {
+                            start: 1,
+                            end: 0
+                        },
+                        scale: {
+                            start: 0.8,
+                            end: 1
+                        }
+                    });
+                }
+
                 this.updateFistsPosition(true);
+                pinImage.visible = false;
+                projImage.setFrame(def.idString);
                 break;
             }
         }
@@ -1006,17 +1093,35 @@ export class Player extends GameObject<ObjectCategory.Player> {
 
     destroy(): void {
         super.destroy();
+
+        const images = this.images;
+        images.aimTrail.destroy();
+        images.vest.destroy();
+        images.body.destroy();
+        images.leftFist.destroy();
+        images.rightFist.destroy();
+        images.backpack.destroy();
+        images.helmet.destroy();
+        images.weapon.destroy();
+        images.altWeapon.destroy();
+        images.muzzleFlash.destroy();
+        images.emoteBackground.destroy();
+        images.emoteImage.destroy();
+        images.waterOverlay.destroy();
+
         this.healingParticlesEmitter.destroy();
         this.actionSound?.stop();
         if (this.isActivePlayer) $("#action-container").hide();
-        this.waterOverlayAnim?.kill();
-        this.anims.emoteHideAnim?.kill();
-        this.anims.emoteAnim?.kill();
         this.emoteContainer.destroy();
-        this.anims.leftFistAnim?.kill();
-        this.anims.rightFistAnim?.kill();
-        this.anims.weaponAnim?.kill();
-        this.anims.muzzleFlashFadeAnim?.kill();
-        this.anims.muzzleFlashRecoilAnim?.kill();
+
+        const anims = this.anims;
+        anims.emoteHideAnim?.kill();
+        anims.waterOverlayAnim?.kill();
+        anims.emoteAnim?.kill();
+        anims.leftFistAnim?.kill();
+        anims.rightFistAnim?.kill();
+        anims.weaponAnim?.kill();
+        anims.muzzleFlashFadeAnim?.kill();
+        anims.muzzleFlashRecoilAnim?.kill();
     }
 }
