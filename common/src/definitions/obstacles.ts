@@ -4859,24 +4859,6 @@ export const Obstacles = ObjectDefinitions.withDefault<ObstacleDefinition>()(
             {
                 [inheritFrom]: "rsh_case_single",
                 idString: "rsh_case_dual"
-            },
-            {
-                idString: "test_polygon",
-                material: "crate",
-                hasLoot: false,
-                name: "Meow",
-                health: 2000,
-                scale: {
-                    spawnMax: 1,
-                    spawnMin: 1,
-                    destroy: 0.8
-                },
-                rotationMode: RotationMode.Full,
-                hitbox: new PolygonHitbox([
-                    Vec.create(0, 0),
-                    Vec.create(10, 50),
-                    Vec.create(-10, 50)
-                ])
             }
             /* {
                 idString: "humvee",

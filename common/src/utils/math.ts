@@ -201,12 +201,11 @@ export const Geometry = Object.freeze({
         position: Vector,
         scale: number,
         angle: number,
-        points: Vector[],
-        center: Vector,
-        normals: Vector[]
+        points: readonly Vector[],
+        center: Vector
     ): Vector[] {
         const newCenter = Vec.add(center, position);
-        return points.map((point, i) => {
+        return points.map(point => {
             const dist = Geometry.distance(point, center) * scale;
             const rot = Angle.betweenPoints(point, center) + angle;
             return Vec.add(newCenter, Vec.rotate(Vec.create(dist, 0), rot));
@@ -217,7 +216,7 @@ export const Geometry = Object.freeze({
      * @param position The position to search
      * @param points The polygon vertices
      */
-    findClosestPointOnPolygon(position: Vector, points: Vector[]): number {
+    findClosestPointOnPolygon(position: Vector, points: readonly Vector[]): number {
         let result = -1;
         let minDistance = Number.MAX_VALUE;
 
@@ -239,7 +238,7 @@ export const Geometry = Object.freeze({
     isTriangleCounterClockWise(a: Vector, b: Vector, c: Vector): boolean {
         return b.x * a.y + c.x * b.y + a.x * c.y < a.x * b.y + b.x * c.y + c.x * a.y;
     },
-    polygonNormals(verts: Vector[]): Vector[] {
+    polygonNormals(verts: readonly Vector[]): Vector[] {
         return verts.map((_, i) => {
             const va = verts[i];
             const vb = verts[(i + 1) % verts.length];
@@ -268,26 +267,28 @@ export const Geometry = Object.freeze({
         let max = Vec.dotProduct(p2, normal);
 
         if (min > max) {
-            // swap the min and max values.
-            const t = min;
-            min = max;
-            max = t;
+            [min, max] = [max, min];
         }
         return { min, max };
     },
 
     /**
      * Projects polygon vertices in a normal
+     * @param center The polygon's center
      * @param points The polygon vertices
-     * @param normal the normal to project the vertices
+     * @param normal The normal to project the vertices onto
      */
-    projectVertices(points: Vector[], normal: Vector): { min: number, max: number } {
+    projectVertices(
+        points: readonly Vector[],
+        normal: Vector,
+        center: Vector = Geometry.polygonCenter(points)
+    ): { min: number, max: number } {
         let min = Number.MAX_VALUE;
         let max = Number.MIN_VALUE;
 
         for (let i = 0; i < points.length; i++) {
             const v = points[i];
-            const proj = Vec.dotProduct(v, normal);
+            const proj = Vec.dotProduct(Vec.sub(center, v), normal);
 
             if (proj < min) {
                 min = proj;
@@ -304,7 +305,7 @@ export const Geometry = Object.freeze({
      * @param points The polygon vertices
      * @return A vector representing the polygon center
      */
-    polygonCenter(points: Vector[]): Vector {
+    polygonCenter(points: readonly Vector[]): Vector {
         let center = Vec.create(0, 0);
         for (let i = 0; i < points.length; i++) {
             center = Vec.add(center, points[i]);
@@ -385,23 +386,25 @@ export const Collision = Object.freeze({
      * Check whether a polygon and a circle collide
      * @param position The circle center position
      * @param radius The circle radius
-     * @param verts The polygon vertices
+     * @param points The polygon vertices
      * @param normals The polygon normals
      */
     circlePolygonCollision(
         position: Vector,
         radius: number,
-        verts: Vector[],
-        normals: Vector[]
+        points: readonly Vector[],
+        normals: readonly Vector[] = Geometry.polygonNormals(points),
+        center: Vector = Geometry.polygonCenter(points)
     ): boolean {
         let normal = Vec.create(0, 0);
 
+        const circToPoly = Vec.sub(center, position);
         for (let i = 0; i < normals.length; i++) {
             normal = normals[i];
 
-            const { min: minA, max: maxA } = Geometry.projectVertices(verts, normal);
+            const { min: minA, max: maxA } = Geometry.projectVertices(points, normal, center);
             const { min: minB, max: maxB } = Geometry.projectCircle(
-                position,
+                circToPoly,
                 radius,
                 normal
             );
@@ -411,12 +414,12 @@ export const Collision = Object.freeze({
             }
         }
 
-        const cpIndex = Geometry.findClosestPointOnPolygon(position, verts);
-        normal = normals[cpIndex];
+        const cpIndex = Geometry.findClosestPointOnPolygon(position, points);
+        normal = Vec.normalize(Vec.sub(points[cpIndex], position));
 
-        const { min: minA, max: maxA } = Geometry.projectVertices(verts, normal);
+        const { min: minA, max: maxA } = Geometry.projectVertices(points, normal, center);
         const { min: minB, max: maxB } = Geometry.projectCircle(
-            position,
+            circToPoly,
             radius,
             normal
         );
@@ -717,7 +720,7 @@ export const Collision = Object.freeze({
      * @param points The polygon vertices
      * @return An intersection response with the intersection position and normal Vectors, returns null if they don't intersect
      */
-    lineIntersectsPolygon(a: Vector, b: Vector, points: Vector[]): IntersectionResponse {
+    lineIntersectsPolygon(a: Vector, b: Vector, points: readonly Vector[]): IntersectionResponse {
         let closestDist = Number.MAX_VALUE;
         let normal: Vector | undefined = undefined;
         let point: Vector | undefined = undefined;
@@ -875,23 +878,25 @@ export const Collision = Object.freeze({
         position: Vector,
         radius: number,
         polygonCenter: Vector,
-        points: Vector[],
-        normals: Vector[]
+        points: readonly Vector[],
+        normals: readonly Vector[] = Geometry.polygonNormals(points),
+        center: Vector = Geometry.polygonCenter(points)
     ): CollisionResponse {
         let dir = Vec.create(0, 0);
         let pen = Number.MAX_VALUE;
 
-        let axis = Vec.create(0, 0);
+        let normal = Vec.create(0, 0);
         let axisDepth = 0;
 
+        const circToPoly = Vec.sub(center, position);
         for (let i = 0; i < normals.length; i++) {
-            axis = normals[i];
+            normal = normals[i];
 
-            const { min: minA, max: maxA } = Geometry.projectVertices(points, axis);
+            const { min: minA, max: maxA } = Geometry.projectVertices(points, normal, center);
             const { min: minB, max: maxB } = Geometry.projectCircle(
-                position,
+                circToPoly,
                 radius,
-                axis
+                normal
             );
 
             if (minA >= maxB || minB >= maxA) {
@@ -902,15 +907,19 @@ export const Collision = Object.freeze({
 
             if (axisDepth < pen) {
                 pen = axisDepth;
-                dir = axis;
+                dir = normal;
             }
         }
 
         const cpIndex = Geometry.findClosestPointOnPolygon(position, points);
-        axis = normals[cpIndex];
+        normal = Vec.normalize(Vec.sub(points[cpIndex], position));
 
-        const { min: minA, max: maxA } = Geometry.projectVertices(points, axis);
-        const { min: minB, max: maxB } = Geometry.projectCircle(position, radius, axis);
+        const { min: minA, max: maxA } = Geometry.projectVertices(points, normal);
+        const { min: minB, max: maxB } = Geometry.projectCircle(
+            circToPoly,
+            radius,
+            normal
+        );
 
         if (minA >= maxB || minB >= maxA) {
             return null;
@@ -920,7 +929,7 @@ export const Collision = Object.freeze({
 
         if (axisDepth < pen) {
             pen = axisDepth;
-            dir = axis;
+            dir = normal;
         }
 
         const direction = Vec.sub(polygonCenter, position);
@@ -972,7 +981,7 @@ export const Collision = Object.freeze({
         // If t is positive and s lies within the line it intersects; returns t
         return distanceAlongRay >= 0 && distanceAlongLine >= 0 && distanceAlongLine <= 1 ? distanceAlongRay : null;
     },
-    rayIntersectsPolygon(origin: Vector, direction: Vector, polygon: Vector[]): number | null {
+    rayIntersectsPolygon(origin: Vector, direction: Vector, polygon: readonly Vector[]): number | null {
         let t = Number.MAX_VALUE;
 
         let intersected = false;

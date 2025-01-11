@@ -222,7 +222,8 @@ export class CircleHitbox extends BaseHitbox<HitboxType.Circle> {
                     this.radius,
                     that.center,
                     that.points,
-                    that.normals
+                    that.normals,
+                    that.center
                 );
                 if (collision) {
                     this.position = Vec.sub(this.position, Vec.scale(collision.dir, collision.pen));
@@ -681,8 +682,7 @@ export class PolygonHitbox extends BaseHitbox<HitboxType.Polygon> {
                 scale,
                 angle,
                 this.points,
-                this.center,
-                this.normals
+                this.center
             )
         );
     }
@@ -693,8 +693,7 @@ export class PolygonHitbox extends BaseHitbox<HitboxType.Polygon> {
             scale,
             0,
             this.points,
-            this.center,
-            this.normals
+            this.center
         );
         this.normals = Geometry.polygonNormals(this.points);
         this.center = Geometry.polygonCenter(this.points);
