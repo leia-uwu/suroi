@@ -146,7 +146,12 @@ export default tseslint.config(
             /**
              * These two methods do NOT have the same behavior, unlike what ESLint claims.
              */
-            ["@typescript-eslint/prefer-regexp-exec"]: "off"
+            ["@typescript-eslint/prefer-regexp-exec"]: "off",
+
+            /**
+             * Normal for (let i = 0...) loops can be way faster smh, refrigerator rule
+             */
+            ["@typescript-eslint/prefer-for-of"]: "off"
 
             // #endregion
         }

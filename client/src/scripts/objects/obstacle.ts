@@ -1,7 +1,7 @@
-import { Layer, Layers, ObjectCategory, ZIndexes } from "@common/constants";
-import { MaterialSounds, type ObstacleDefinition } from "@common/definitions/obstacles";
+import { GameConstants, Layer, Layers, ObjectCategory, ZIndexes } from "@common/constants";
+import { MaterialSounds, RotationMode, type ObstacleDefinition } from "@common/definitions/obstacles";
 import { type Orientation, type Variation } from "@common/typings";
-import { CircleHitbox, RectangleHitbox, type Hitbox } from "@common/utils/hitbox";
+import { CircleHitbox, HitboxType, RectangleHitbox, type Hitbox } from "@common/utils/hitbox";
 import { adjacentOrEqualLayer, equivLayer, getEffectiveZIndex } from "@common/utils/layer";
 import { Angle, EaseFunctions, Numeric, calculateDoorHitboxes } from "@common/utils/math";
 import { type Timeout } from "@common/utils/misc";
@@ -369,7 +369,20 @@ export class Obstacle extends GameObject.derive(ObjectCategory.Obstacle) {
         this.updateZIndex();
 
         if (this._door === undefined) {
-            this.hitbox = definition.hitbox.transform(this.position, this.scale, this.orientation);
+            if (definition.hitbox.type === HitboxType.Polygon
+                && definition.rotationMode === RotationMode.Full) {
+                this.hitbox = definition.hitbox.transformWithAngle(
+                    this.position,
+                    this.scale,
+                    this.rotation
+                );
+            } else {
+                this.hitbox = definition.hitbox.transform(
+                    this.position,
+                    this.scale,
+                    this.orientation
+                );
+            }
         }
 
         const pos = toPixiCoords(this.position);

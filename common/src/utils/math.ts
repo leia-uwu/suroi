@@ -188,6 +188,129 @@ export const Geometry = Object.freeze({
             min: Vec.addAdjust(pos, min, orientation),
             max: Vec.addAdjust(pos, max, orientation)
         };
+    },
+    /**
+     * Transform a polygon by a given position, scale and angle
+     * @param position The position to transform the rectangle by
+     * @param scale The scale to scale the polygon by
+     * @param angle The angle to rotate the polygon
+     * @param points The vertices of the polygon you want to rotate
+     * @return A new Polygon transformed by the given position, scale and angle
+     */
+    transformPolygon(
+        position: Vector,
+        scale: number,
+        angle: number,
+        points: Vector[],
+        center: Vector,
+        normals: Vector[]
+    ): Vector[] {
+        const newCenter = Vec.add(center, position);
+        return points.map((point, i) => {
+            const dist = Geometry.distance(point, center) * scale;
+            const rot = Angle.betweenPoints(point, center) + angle;
+            return Vec.add(newCenter, Vec.rotate(Vec.create(dist, 0), rot));
+        });
+    },
+    /**
+     * Finds the closest point to a position on a polygon
+     * @param position The position to search
+     * @param points The polygon vertices
+     */
+    findClosestPointOnPolygon(position: Vector, points: Vector[]): number {
+        let result = -1;
+        let minDistance = Number.MAX_VALUE;
+
+        for (let i = 0; i < points.length; i++) {
+            const v = points[i];
+            const distance = Geometry.distanceSquared(v, position);
+
+            if (distance < minDistance) {
+                minDistance = distance;
+                result = i;
+            }
+        }
+
+        return result;
+    },
+    /**
+     * Checks if a triangle points are in counter clock wise order
+     */
+    isTriangleCounterClockWise(a: Vector, b: Vector, c: Vector): boolean {
+        return b.x * a.y + c.x * b.y + a.x * c.y < a.x * b.y + b.x * c.y + c.x * a.y;
+    },
+    polygonNormals(verts: Vector[]): Vector[] {
+        return verts.map((_, i) => {
+            const va = verts[i];
+            const vb = verts[(i + 1) % verts.length];
+            const edge = Vec.sub(vb, va);
+            return Vec.normalizeSafe(Vec.create(-edge.y, edge.x));
+        });
+    },
+    /**
+     * Projects a circle in a normal
+     * @param center The circle center
+     * @param radius The circle radius
+     * @param normal the normal to project the vertices
+     */
+    projectCircle(
+        center: Vector,
+        radius: number,
+        normal: Vector
+    ): { min: number, max: number } {
+        const direction = Vec.normalize(normal);
+        const directionAndRadius = Vec.scale(direction, radius);
+
+        const p1 = Vec.add(center, directionAndRadius);
+        const p2 = Vec.sub(center, directionAndRadius);
+
+        let min = Vec.dotProduct(p1, normal);
+        let max = Vec.dotProduct(p2, normal);
+
+        if (min > max) {
+            // swap the min and max values.
+            const t = min;
+            min = max;
+            max = t;
+        }
+        return { min, max };
+    },
+
+    /**
+     * Projects polygon vertices in a normal
+     * @param points The polygon vertices
+     * @param normal the normal to project the vertices
+     */
+    projectVertices(points: Vector[], normal: Vector): { min: number, max: number } {
+        let min = Number.MAX_VALUE;
+        let max = Number.MIN_VALUE;
+
+        for (let i = 0; i < points.length; i++) {
+            const v = points[i];
+            const proj = Vec.dotProduct(v, normal);
+
+            if (proj < min) {
+                min = proj;
+            }
+            if (proj > max) {
+                max = proj;
+            }
+        }
+        return { min, max };
+    },
+
+    /**
+     * Gets the center of a polygon
+     * @param points The polygon vertices
+     * @return A vector representing the polygon center
+     */
+    polygonCenter(points: Vector[]): Vector {
+        let center = Vec.create(0, 0);
+        for (let i = 0; i < points.length; i++) {
+            center = Vec.add(center, points[i]);
+        }
+        center = Vec.scale(center, 1 / points.length);
+        return center;
     }
 });
 
@@ -257,6 +380,52 @@ export const Collision = Object.freeze({
      */
     rectRectCollision(min1: Vector, max1: Vector, min2: Vector, max2: Vector): boolean {
         return min2.x < max1.x && min2.y < max1.y && min1.x < max2.x && min1.y < max2.y;
+    },
+    /**
+     * Check whether a polygon and a circle collide
+     * @param position The circle center position
+     * @param radius The circle radius
+     * @param verts The polygon vertices
+     * @param normals The polygon normals
+     */
+    circlePolygonCollision(
+        position: Vector,
+        radius: number,
+        verts: Vector[],
+        normals: Vector[]
+    ): boolean {
+        let normal = Vec.create(0, 0);
+
+        for (let i = 0; i < normals.length; i++) {
+            normal = normals[i];
+
+            const { min: minA, max: maxA } = Geometry.projectVertices(verts, normal);
+            const { min: minB, max: maxB } = Geometry.projectCircle(
+                position,
+                radius,
+                normal
+            );
+
+            if (minA >= maxB || minB >= maxA) {
+                return false;
+            }
+        }
+
+        const cpIndex = Geometry.findClosestPointOnPolygon(position, verts);
+        normal = normals[cpIndex];
+
+        const { min: minA, max: maxA } = Geometry.projectVertices(verts, normal);
+        const { min: minB, max: maxB } = Geometry.projectCircle(
+            position,
+            radius,
+            normal
+        );
+
+        if (minA >= maxB || minB >= maxA) {
+            return false;
+        }
+
+        return true;
     },
     /**
      * Determines the distance between two circles
@@ -542,6 +711,45 @@ export const Collision = Object.freeze({
         };
     },
     /**
+     * Checks if a line intersects a polygon
+     * @param s0 The start of the line
+     * @param s1 The end of the line
+     * @param points The polygon vertices
+     * @return An intersection response with the intersection position and normal Vectors, returns null if they don't intersect
+     */
+    lineIntersectsPolygon(a: Vector, b: Vector, points: Vector[]): IntersectionResponse {
+        let closestDist = Number.MAX_VALUE;
+        let normal: Vector | undefined = undefined;
+        let point: Vector | undefined = undefined;
+
+        for (let i = 0; i < points.length; i++) {
+            const va = points[i];
+            const vb = points[(i + 1) % points.length];
+
+            const intersection = Collision.lineIntersectsLine(a, b, va, vb);
+
+            if (intersection) {
+                const newDist = Geometry.distanceSquared(intersection, a);
+
+                if (newDist < closestDist) {
+                    closestDist = newDist;
+                    const s = Vec.sub(va, vb);
+                    normal = Vec.normalize(Vec.create(-s.y, s.x));
+                    point = intersection;
+                }
+            }
+        }
+
+        if (point && normal) {
+            return {
+                point,
+                normal
+            };
+        }
+
+        return null;
+    },
+    /**
      * Checks if a line intersects a rectangle
      * @param s0 The start of the line
      * @param s1 The end of the line
@@ -652,6 +860,79 @@ export const Collision = Object.freeze({
         }
 
         return null;
+    },
+
+    /**
+     * Checks if a circle intersects a polygon
+     * @param position The center of the circle
+     * @param radius The radius of the circle
+     * @param polygonCenter The center of the polygon
+     * @param points The polygon vertices
+     * @link https://www.youtube.com/watch?v=V2JI_P9bvik
+     * @return An intersection response with the intersection normal and penetration returns null if they don't intersect
+     */
+    circlePolygonIntersection(
+        position: Vector,
+        radius: number,
+        polygonCenter: Vector,
+        points: Vector[],
+        normals: Vector[]
+    ): CollisionResponse {
+        let dir = Vec.create(0, 0);
+        let pen = Number.MAX_VALUE;
+
+        let axis = Vec.create(0, 0);
+        let axisDepth = 0;
+
+        for (let i = 0; i < normals.length; i++) {
+            axis = normals[i];
+
+            const { min: minA, max: maxA } = Geometry.projectVertices(points, axis);
+            const { min: minB, max: maxB } = Geometry.projectCircle(
+                position,
+                radius,
+                axis
+            );
+
+            if (minA >= maxB || minB >= maxA) {
+                return null;
+            }
+
+            axisDepth = Numeric.min(maxB - minA, maxA - minB);
+
+            if (axisDepth < pen) {
+                pen = axisDepth;
+                dir = axis;
+            }
+        }
+
+        const cpIndex = Geometry.findClosestPointOnPolygon(position, points);
+        axis = normals[cpIndex];
+
+        const { min: minA, max: maxA } = Geometry.projectVertices(points, axis);
+        const { min: minB, max: maxB } = Geometry.projectCircle(position, radius, axis);
+
+        if (minA >= maxB || minB >= maxA) {
+            return null;
+        }
+
+        axisDepth = Numeric.min(maxB - minA, maxA - minB);
+
+        if (axisDepth < pen) {
+            pen = axisDepth;
+            dir = axis;
+        }
+
+        const direction = Vec.sub(polygonCenter, position);
+
+        if (Vec.dotProduct(direction, dir) < 0) {
+            dir = Vec.invert(dir);
+        }
+
+        return {
+            pen,
+            dir
+        };
     },
     distanceToLine(p: Vector, a: Vector, b: Vector): number {
         const ab = Vec.sub(b, a);

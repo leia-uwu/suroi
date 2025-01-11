@@ -439,7 +439,7 @@ export const ObjectSerializations: { [K in ObjectCategory]: ObjectSerialization<
                     // to make deserialization easier though, always write
                     // the obstacle data first
                     stream.writeUint8(obstacleData);
-                    stream.writeRotation(rotation.rotation);
+                    stream.writeRotation2(rotation.rotation);
                     break;
                 }
                 case RotationMode.Limited:
@@ -538,7 +538,7 @@ export const ObjectSerializations: { [K in ObjectCategory]: ObjectSerialization<
 
             switch (definition.rotationMode) {
                 case RotationMode.Full: {
-                    data.rotation.rotation = stream.readRotation();
+                    data.rotation.rotation = stream.readRotation2();
                     break;
                 }
                 case RotationMode.Limited:

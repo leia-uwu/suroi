@@ -2,7 +2,7 @@ import { ObjectCategory } from "@common/constants";
 import { Obstacles, RotationMode, type ObstacleDefinition } from "@common/definitions/obstacles";
 import { PerkIds } from "@common/definitions/perks";
 import { type Orientation, type Variation } from "@common/typings";
-import { CircleHitbox, RectangleHitbox, type Hitbox } from "@common/utils/hitbox";
+import { CircleHitbox, HitboxType, RectangleHitbox, type Hitbox } from "@common/utils/hitbox";
 import { equalLayer } from "@common/utils/layer";
 import { Angle, calculateDoorHitboxes, resolveStairInteraction } from "@common/utils/math";
 import { ItemType, NullString, ObstacleSpecialRoles, type ReferenceTo, type ReifiableDef } from "@common/utils/objectDefinitions";
@@ -96,8 +96,15 @@ export class Obstacle extends BaseGameObject.derive(ObjectCategory.Obstacle) {
 
         const hitboxRotation = this.definition.rotationMode === RotationMode.Limited ? rotation as Orientation : 0;
 
-        this.hitbox = definition.hitbox.transform(this.position, this.scale, hitboxRotation);
-        this.spawnHitbox = (definition.spawnHitbox ?? definition.hitbox).transform(this.position, this.scale, hitboxRotation);
+        const transform = (hitbox: Hitbox): Hitbox => {
+            if (hitbox.type === HitboxType.Polygon
+                && definition.rotationMode === RotationMode.Full) {
+                return hitbox.transformWithAngle(this.position, this.scale, this.rotation);
+            }
+            return definition.hitbox.transform(this.position, this.scale, hitboxRotation);
+        };
+        this.hitbox = transform(definition.hitbox);
+        this.spawnHitbox = transform(definition.spawnHitbox ?? definition.hitbox);
 
         this.collidable = !definition.noCollisions;
 

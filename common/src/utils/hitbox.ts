@@ -29,7 +29,6 @@ export interface HitboxJSONMapping {
     [HitboxType.Polygon]: {
         readonly type: HitboxType.Polygon
         readonly points: Vector[]
-        readonly center: Vector
     }
 }
 
@@ -106,6 +105,8 @@ export abstract class BaseHitbox<T extends HitboxType = HitboxType> implements D
      */
     abstract transform(position: Vector, scale?: number, orientation?: Orientation): Hitbox;
 
+    abstract transformWithAngle(position: Vector, scale: number, angle: number): Hitbox;
+
     /**
      * Scale this {@link Hitbox}.
      *
@@ -176,15 +177,19 @@ export class CircleHitbox extends BaseHitbox<HitboxType.Circle> {
             case HitboxType.Group:
                 return that.collidesWith(this);
             case HitboxType.Polygon:
-                // TODO: proper circle to polygon detection
-                return that.collidesWith(this.toRectangle());
+                return Collision.circlePolygonCollision(this.position, this.radius, that.points, that.normals);
         }
     }
 
     override resolveCollision(that: Hitbox): void {
         switch (that.type) {
             case HitboxType.Circle: {
-                const collision = Collision.circleCircleIntersection(this.position, this.radius, that.position, that.radius);
+                const collision = Collision.circleCircleIntersection(
+                    this.position,
+                    this.radius,
+                    that.position,
+                    that.radius
+                );
 
                 if (collision) {
                     this.position = Vec.sub(this.position, Vec.scale(collision.dir, collision.pen));
@@ -192,7 +197,12 @@ export class CircleHitbox extends BaseHitbox<HitboxType.Circle> {
                 break;
             }
             case HitboxType.Rect: {
-                const collision = Collision.rectCircleIntersection(that.min, that.max, this.position, this.radius);
+                const collision = Collision.rectCircleIntersection(
+                    that.min,
+                    that.max,
+                    this.position,
+                    this.radius
+                );
                 if (collision) {
                     this.position = Vec.sub(this.position, Vec.scale(collision.dir, collision.pen));
                 }
@@ -203,6 +213,19 @@ export class CircleHitbox extends BaseHitbox<HitboxType.Circle> {
                     if (this.collidesWith(hitbox)) {
                         this.resolveCollision(hitbox);
                     }
+                }
+                break;
+            }
+            case HitboxType.Polygon: {
+                const collision = Collision.circlePolygonIntersection(
+                    this.position,
+                    this.radius,
+                    that.center,
+                    that.points,
+                    that.normals
+                );
+                if (collision) {
+                    this.position = Vec.sub(this.position, Vec.scale(collision.dir, collision.pen));
                 }
                 break;
             }
@@ -229,6 +252,15 @@ export class CircleHitbox extends BaseHitbox<HitboxType.Circle> {
 
     override transform(position: Vector, scale = 1, orientation = 0 as Orientation): CircleHitbox {
         return new CircleHitbox(this.radius * scale, Vec.addAdjust(position, this.position, orientation));
+    }
+
+    override transformWithAngle(position: Vector, scale: number, angle: number): CircleHitbox {
+        return new CircleHitbox(
+            this.radius * scale,
+            Vec.add(
+                this.position,
+                Vec.rotate(position, angle)
+            ));
     }
 
     override scale(scale: number): void {
@@ -374,6 +406,10 @@ export class RectangleHitbox extends BaseHitbox<HitboxType.Rect> {
         return new RectangleHitbox(rect.min, rect.max);
     }
 
+    override transformWithAngle(_position: Vector, _scale: number, _angle: number): Hitbox {
+        throw new Error("Operation not supported");
+    }
+
     override scale(scale: number): void {
         const centerX = (this.min.x + this.max.x) / 2;
         const centerY = (this.min.y + this.max.y) / 2;
@@ -510,6 +546,10 @@ export class GroupHitbox<GroupType extends Array<RectangleHitbox | CircleHitbox>
         );
     }
 
+    override transformWithAngle(_position: Vector, _scale: number, _angle: number): Hitbox {
+        throw new Error("Operation not supported");
+    }
+
     override scale(scale: number): void {
         for (const hitbox of this.hitboxes) hitbox.scale(scale);
     }
@@ -559,27 +599,32 @@ export class GroupHitbox<GroupType extends Array<RectangleHitbox | CircleHitbox>
 export class PolygonHitbox extends BaseHitbox<HitboxType.Polygon> {
     override readonly type = HitboxType.Polygon;
     points: Vector[];
+    normals: Vector[];
     center: Vector;
 
-    static simple(points: Vector[], center = Vec.create(0, 0)): HitboxJSONMapping[HitboxType.Polygon] {
+    static simple(points: Vector[]): HitboxJSONMapping[HitboxType.Polygon] {
         return {
             type: HitboxType.Polygon,
-            points,
-            center
+            points
         };
     }
 
-    constructor(points: Vector[], center = Vec.create(0, 0)) {
+    constructor(points: Vector[]) {
         super();
-        this.points = points;
-        this.center = center;
+        const isCCW = Geometry.isTriangleCounterClockWise(
+            points[0],
+            points[1],
+            points[2]
+        );
+        this.points = isCCW ? [...points] : [...points].reverse();
+        this.normals = Geometry.polygonNormals(this.points);
+        this.center = Geometry.polygonCenter(this.points);
     }
 
     override toJSON(): HitboxJSONMapping[HitboxType.Polygon] {
         return {
             type: this.type,
-            points: this.points.map(point => Vec.clone(point)),
-            center: this.center
+            points: this.points.map(point => Vec.clone(point))
         };
     }
 
@@ -618,7 +663,7 @@ export class PolygonHitbox extends BaseHitbox<HitboxType.Polygon> {
     override clone(deep = true): PolygonHitbox {
         return new PolygonHitbox(
             deep
-                ? this.points.map(Vec.clone)
+                ? this.points.map(v => Vec.clone(v))
                 : this.points
         );
     }
@@ -629,14 +674,34 @@ export class PolygonHitbox extends BaseHitbox<HitboxType.Polygon> {
         );
     }
 
-    override scale(scale: number): void {
-        for (let i = 0, length = this.points.length; i < length; i++) {
-            this.points[i] = Vec.scale(this.points[i], scale);
-        }
+    override transformWithAngle(position: Vector, scale: number, angle: number): Hitbox {
+        return new PolygonHitbox(
+            Geometry.transformPolygon(
+                position,
+                scale,
+                angle,
+                this.points,
+                this.center,
+                this.normals
+            )
+        );
     }
 
-    override intersectsLine(_a: Vector, _b: Vector): IntersectionResponse {
-        throw new Error("Operation not supported");
+    override scale(scale: number): void {
+        this.points = Geometry.transformPolygon(
+            Vec.create(0, 0),
+            scale,
+            0,
+            this.points,
+            this.center,
+            this.normals
+        );
+        this.normals = Geometry.polygonNormals(this.points);
+        this.center = Geometry.polygonCenter(this.points);
+    }
+
+    override intersectsLine(a: Vector, b: Vector): IntersectionResponse {
+        return Collision.lineIntersectsPolygon(a, b, this.points);
     }
 
     override randomPoint(): Vector {
