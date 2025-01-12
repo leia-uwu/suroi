@@ -474,7 +474,7 @@ export const Obstacles = ObjectDefinitions.withDefault<ObstacleDefinition>()(
                 hitbox: props.hitbox,
                 zIndex: props.zIndex ?? ZIndexes.ObstaclesLayer5,
                 hasLoot: props.hasLoot ?? false,
-                allowFlyover: props.allowFlyOver ?? FlyoverPref.Sometimes,
+                allowFlyover: props.allowFlyOver ?? FlyoverPref.Never,
                 frames: {
                     base: props.frames?.base,
                     particle: props.frames?.particle,
