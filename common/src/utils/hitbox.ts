@@ -1,5 +1,5 @@
 import { type Orientation } from "../typings";
-import { Collision, Geometry, Numeric, type CollisionRecord, type IntersectionResponse } from "./math";
+import { Angle, Collision, Geometry, Numeric, type CollisionRecord, type IntersectionResponse } from "./math";
 import { cloneDeepSymbol, cloneSymbol, type Cloneable, type DeepCloneable } from "./misc";
 import { pickRandomInArray, randomFloat, randomPointInsideCircle } from "./random";
 import { Vec, type Vector } from "./vector";
@@ -251,7 +251,7 @@ export class CircleHitbox extends BaseHitbox<HitboxType.Circle> {
         return new CircleHitbox(this.radius, deep ? Vec.clone(this.position) : this.position);
     }
 
-    override transform(position: Vector, scale = 1, orientation = 0 as Orientation): CircleHitbox {
+    override transform(position: Vector, scale = 1, orientation = 0 as Orientation, angle?: number): CircleHitbox {
         return new CircleHitbox(this.radius * scale, Vec.addAdjust(position, this.position, orientation));
     }
 
@@ -455,12 +455,13 @@ export class RectangleHitbox extends BaseHitbox<HitboxType.Rect> {
     }
 }
 
-export class GroupHitbox<GroupType extends Array<RectangleHitbox | CircleHitbox> = Array<RectangleHitbox | CircleHitbox>> extends BaseHitbox<HitboxType.Group> {
+type GroupChild = RectangleHitbox | CircleHitbox | PolygonHitbox;
+export class GroupHitbox<GroupType extends GroupChild[] = GroupChild[]> extends BaseHitbox<HitboxType.Group> {
     override readonly type = HitboxType.Group;
     position = Vec.create(0, 0);
     hitboxes: GroupType;
 
-    static simple<ChildType extends ReadonlyArray<RectangleHitbox | CircleHitbox> = ReadonlyArray<RectangleHitbox | CircleHitbox>>(...hitboxes: ChildType): HitboxJSONMapping[HitboxType.Group] {
+    static simple<ChildType extends readonly GroupChild[] = readonly GroupChild[]>(...hitboxes: ChildType): HitboxJSONMapping[HitboxType.Group] {
         return {
             type: HitboxType.Group,
             hitboxes: hitboxes.map(h => h.toJSON())
@@ -539,11 +540,23 @@ export class GroupHitbox<GroupType extends Array<RectangleHitbox | CircleHitbox>
         );
     }
 
-    override transform(position: Vector, scale?: number, orientation?: Orientation): GroupHitbox {
+    override transform(position: Vector, scale = 1, orientation?: Orientation, angle?: number): GroupHitbox {
         this.position = position;
-
+        const center = Vec.create(0, 0);
         return new GroupHitbox(
-            ...this.hitboxes.map(hitbox => hitbox.transform(position, scale, orientation))
+            ...this.hitboxes.map(hitbox => {
+                if (hitbox.type === HitboxType.Polygon) {
+                    return new PolygonHitbox(Geometry.transformPolygon(position, scale, angle ?? 0, hitbox.points, center));
+                } else if (hitbox.type === HitboxType.Circle) {
+                    const dist = Geometry.distance(hitbox.position, center) * scale;
+                    const rot = Angle.betweenPoints(hitbox.position, center) + (angle ?? 0);
+                    return new CircleHitbox(
+                        hitbox.radius * (scale ?? 1),
+                        Vec.add(position, Vec.rotate(Vec.create(dist, 0), rot))
+                    );
+                }
+                return hitbox.transform(position, scale, orientation, angle);
+            })
         );
     }
 
@@ -649,6 +662,8 @@ export class PolygonHitbox extends BaseHitbox<HitboxType.Polygon> {
             case HitboxType.Circle: {
                 return that.collidesWith(this);
             }
+            case HitboxType.Polygon:
+                return that.toRectangle().collidesWith(this.toRectangle());
         }
         this.throwUnknownSubclassError(that);
     }
@@ -669,13 +684,16 @@ export class PolygonHitbox extends BaseHitbox<HitboxType.Polygon> {
         );
     }
 
-    override transform(position: Vector, scale = 1, orientation: Orientation = 0): PolygonHitbox {
+    override transform(position: Vector, scale = 1, orientation: Orientation = 0, angle?: number): PolygonHitbox {
+        if (angle !== undefined) {
+            return this.transformWithAngle(position, scale, angle);
+        }
         return new PolygonHitbox(
             this.points.map(point => Vec.scale(Vec.addAdjust(position, point, orientation), scale))
         );
     }
 
-    override transformWithAngle(position: Vector, scale: number, angle: number): Hitbox {
+    override transformWithAngle(position: Vector, scale: number, angle: number): PolygonHitbox {
         return new PolygonHitbox(
             Geometry.transformPolygon(
                 position,
@@ -747,6 +765,6 @@ export class PolygonHitbox extends BaseHitbox<HitboxType.Polygon> {
     }
 
     override getCenter(): Vector {
-        return this.toRectangle().getCenter();
+        return this.center;
     }
 }

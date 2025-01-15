@@ -97,11 +97,7 @@ export class Obstacle extends BaseGameObject.derive(ObjectCategory.Obstacle) {
         const hitboxRotation = this.definition.rotationMode === RotationMode.Limited ? rotation as Orientation : 0;
 
         const transform = (hitbox: Hitbox): Hitbox => {
-            if (hitbox.type === HitboxType.Polygon
-                && definition.rotationMode === RotationMode.Full) {
-                return hitbox.transformWithAngle(this.position, this.scale, this.rotation);
-            }
-            return definition.hitbox.transform(this.position, this.scale, hitboxRotation);
+            return definition.hitbox.transform(this.position, this.scale, hitboxRotation, this.rotation);
         };
         this.hitbox = transform(definition.hitbox);
         this.spawnHitbox = transform(definition.spawnHitbox ?? definition.hitbox);
@@ -144,6 +140,10 @@ export class Obstacle extends BaseGameObject.derive(ObjectCategory.Obstacle) {
         }
 
         if (this.definition.detector) game.detectors.push(this);
+
+        if (!this.parentBuilding) {
+
+        }
     }
 
     damage(params: DamageParams & { position?: Vector }): void {

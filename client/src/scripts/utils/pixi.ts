@@ -83,7 +83,7 @@ export async function loadTextures(modeName: Mode, renderer: Renderer, highResol
             .map(def => new Promise<void>(resolve => {
                 if (def.wall) {
                     const { color, borderColor, rounded } = def.wall;
-                    const dimensions = (def.hitbox as RectangleHitbox).clone();
+                    const dimensions = (def.hitbox as RectangleHitbox).toRectangle();
                     dimensions.scale(PIXI_SCALE);
                     const { x, y } = dimensions.min;
                     const [w, h] = [dimensions.max.x - x, dimensions.max.y - y];

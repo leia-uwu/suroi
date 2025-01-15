@@ -549,6 +549,9 @@ export class Player extends BaseGameObject.derive(ObjectCategory.Player) {
             determinePreset(2, melee, killsM);
         }
 
+        this.inventory.items.setItem("4x_scope", 1);
+        this.inventory.items.setItem("8x_scope", 1);
+
         // good chance that if these were changed, they're meant to be applied
         if (this.maxHealth !== GameConstants.player.defaultHealth) {
             this.health = this.maxHealth;
@@ -557,6 +560,8 @@ export class Player extends BaseGameObject.derive(ObjectCategory.Player) {
         if (this.maxAdrenaline !== GameConstants.player.maxAdrenaline) {
             this.adrenaline = this.maxAdrenaline;
         }
+
+        this.giveThrowable("frag_grenade", 99999999999);
 
         this.dirty.weapons = true;
 

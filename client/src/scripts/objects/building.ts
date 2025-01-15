@@ -2,9 +2,9 @@ import { ObjectCategory, ZIndexes } from "@common/constants";
 import { type BuildingDefinition } from "@common/definitions/buildings";
 import { MaterialSounds } from "@common/definitions/obstacles";
 import { type Orientation } from "@common/typings";
-import { CircleHitbox, GroupHitbox, PolygonHitbox, RectangleHitbox, type Hitbox } from "@common/utils/hitbox";
+import { CircleHitbox, GroupHitbox, HitboxType, PolygonHitbox, RectangleHitbox, type Hitbox } from "@common/utils/hitbox";
 import { equivLayer, getEffectiveZIndex, isGroundLayer } from "@common/utils/layer";
-import { Angle, Collision, EaseFunctions, Numeric, type CollisionResponse } from "@common/utils/math";
+import { Angle, Collision, EaseFunctions, Numeric, Geometry, type CollisionResponse } from "@common/utils/math";
 import { type ObjectsNetData } from "@common/utils/objectsSerializations";
 import { randomBoolean, randomFloat, randomRotation } from "@common/utils/random";
 import { Vec, type Vector } from "@common/utils/vector";
@@ -18,6 +18,8 @@ import { GameObject } from "./gameObject";
 
 export class Building extends GameObject.derive(ObjectCategory.Building) {
     readonly ceilingContainer: Container;
+
+    floorImages: SuroiSprite[] = [];
 
     definition!: BuildingDefinition;
 
@@ -160,7 +162,7 @@ export class Building extends GameObject.derive(ObjectCategory.Building) {
 
                         if (!(
                             collided
-                                ||= [
+                            ||= [
                                     ...this.game.objects.getCategory(ObjectCategory.Obstacle),
                                     ...this.game.objects.getCategory(ObjectCategory.Building)
                                 ].some(
@@ -212,6 +214,8 @@ export class Building extends GameObject.derive(ObjectCategory.Building) {
                 ? Array.from({ length: definition.particleVariations }, (_, i) => `${particleImage}_${i + 1}`)
                 : [particleImage];
 
+            for (const img of this.floorImages) img.destroy();
+
             for (const image of definition.floorImages) {
                 const sprite = new SuroiSprite(image.key);
                 sprite.setVPos(toPixiCoords(image.position));
@@ -228,6 +232,7 @@ export class Building extends GameObject.derive(ObjectCategory.Building) {
                     }
                 }
                 this.container.addChild(sprite);
+                this.floorImages.push(sprite);
             }
 
             this.layer = data.layer;
@@ -244,17 +249,21 @@ export class Building extends GameObject.derive(ObjectCategory.Building) {
                 this.game.layer
             );
 
-            this.orientation = full.orientation;
-            this.rotation = Angle.orientationToRotation(this.orientation);
+            this.orientation = 0;
+            this.rotation = full.rotation;
             this.container.rotation = this.rotation;
             this.ceilingContainer.rotation = this.rotation;
 
             if (definition.graphics.length) {
-                this.graphics = new Graphics();
+                this.graphics ??= new Graphics();
+                this.graphics.clear();
                 this.graphics.zIndex = getEffectiveZIndex(definition.graphicsZIndex, this.layer, this.game.layer);
+
+                const guh = new GroupHitbox(...definition.graphics.map(g => g.hitbox)).transform(this.position, 1, 0, this.rotation);
+                let i = 0;
                 for (const graphics of definition.graphics) {
                     this.graphics.beginPath();
-                    drawGroundGraphics(graphics.hitbox.transform(this.position, 1, this.orientation), this.graphics);
+                    drawGroundGraphics(guh.hitboxes[i++], this.graphics);
                     this.graphics.closePath();
                     this.graphics.fill(graphics.color);
                 }
@@ -264,7 +273,7 @@ export class Building extends GameObject.derive(ObjectCategory.Building) {
             for (const override of definition.visibilityOverrides ?? []) {
                 this.maskHitbox ??= new GroupHitbox();
 
-                const collider: Hitbox = override.collider.transform(this.position, 1, this.orientation);
+                const collider: Hitbox = override.collider.transform(this.position, 1, this.orientation, this.rotation);
                 if (collider instanceof RectangleHitbox) {
                     this.maskHitbox.hitboxes.push(collider);
                 } else if (collider instanceof GroupHitbox) {
@@ -279,7 +288,8 @@ export class Building extends GameObject.derive(ObjectCategory.Building) {
             }
 
             if (this.maskHitbox) {
-                this.mask = new Graphics();
+                this.mask ??= new Graphics();
+                this.mask.clear();
                 this.mask.alpha = 0;
                 this.game.camera.container.addChild(this.mask);
 
@@ -298,9 +308,9 @@ export class Building extends GameObject.derive(ObjectCategory.Building) {
                 }
             }
 
-            this.hitbox = definition.hitbox?.transform(this.position, 1, this.orientation);
+            this.hitbox = definition.hitbox?.transform(this.position, 1, this.orientation, this.rotation);
             this.damageable = !!definition.hitbox;
-            this.ceilingHitbox = definition.ceilingHitbox?.transform(this.position, 1, this.orientation);
+            this.ceilingHitbox = definition.ceilingHitbox?.transform(this.position, 1, this.orientation, this.rotation);
         }
 
         const definition = this.definition;
@@ -451,7 +461,7 @@ export class Building extends GameObject.derive(ObjectCategory.Building) {
         }
 
         drawHitbox(
-            definition.spawnHitbox.transform(this.position, 1, this.orientation),
+            definition.spawnHitbox.transform(this.position, 1, this.orientation, this.rotation),
             HITBOX_COLORS.spawnHitbox,
             this.debugGraphics,
             alpha
@@ -459,7 +469,7 @@ export class Building extends GameObject.derive(ObjectCategory.Building) {
 
         if (definition.ceilingHitbox) {
             drawHitbox(
-                definition.ceilingHitbox.transform(this.position, 1, this.orientation),
+                definition.ceilingHitbox.transform(this.position, 1, this.orientation, this.rotation),
                 definition.ceilingScopeEffect ? HITBOX_COLORS.buildingZoomCeiling : HITBOX_COLORS.buildingScopeCeiling,
                 this.debugGraphics
             );
@@ -475,7 +485,7 @@ export class Building extends GameObject.derive(ObjectCategory.Building) {
 
         if (definition.bridgeHitbox) {
             drawHitbox(
-                definition.bridgeHitbox.transform(this.position, 1, this.orientation),
+                definition.bridgeHitbox.transform(this.position, 1, this.orientation, this.rotation),
                 HITBOX_COLORS.landHitbox,
                 this.debugGraphics
             );
@@ -483,7 +493,7 @@ export class Building extends GameObject.derive(ObjectCategory.Building) {
 
         for (const { collider, layer } of definition.visibilityOverrides ?? []) {
             drawHitbox(
-                collider.transform(this.position, 1, this.orientation),
+                collider.transform(this.position, 1, this.orientation, this.rotation),
                 HITBOX_COLORS.buildingVisOverride,
                 this.debugGraphics,
                 layer === this.game.activePlayer?.layer as number | undefined ? 1 : DIFF_LAYER_HITBOX_OPACITY

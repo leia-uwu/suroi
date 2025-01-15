@@ -34,6 +34,7 @@ export class Explosion {
     }
 
     explode(): void {
+        return;
         // List of all near objects
         const objects = this.game.grid.intersectsHitbox(new CircleHitbox(this.definition.radius.max * 2, this.position), this.layer);
         const damagedObjects = new Set<number>();

@@ -200,7 +200,7 @@ export class Game implements GameData {
     private _now = Date.now();
     get now(): number { return this._now; }
 
-    private readonly idealDt = 1000 / Config.tps;
+    readonly idealDt = 1000 / Config.tps;
 
     /**
      * Game Tick delta time

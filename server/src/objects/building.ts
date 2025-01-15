@@ -2,14 +2,16 @@ import { ObjectCategory } from "@common/constants";
 import { Buildings, type BuildingDefinition } from "@common/definitions/buildings";
 import { type Orientation } from "@common/typings";
 import { type Hitbox } from "@common/utils/hitbox";
-import { Angle } from "@common/utils/math";
+import { Angle, Geometry } from "@common/utils/math";
 import { type Timeout } from "@common/utils/misc";
 import { type ReifiableDef } from "@common/utils/objectDefinitions";
 import { type FullData } from "@common/utils/objectsSerializations";
-import { type Vector } from "@common/utils/vector";
+import { Vec, type Vector } from "@common/utils/vector";
 import { type Game } from "../game";
 import { BaseGameObject } from "./gameObject";
 import { type Obstacle } from "./obstacle";
+import { PacketStream } from "@common/packets/packetStream";
+import { MapPacket } from "@common/packets/mapPacket";
 
 export class Building extends BaseGameObject.derive(ObjectCategory.Building) {
     override readonly fullAllocBytes = 8;
@@ -45,19 +47,22 @@ export class Building extends BaseGameObject.derive(ObjectCategory.Building) {
 
     get hasPuzzle(): boolean { return this.puzzle !== undefined; }
 
+    children: Obstacle[] = [];
+
     readonly puzzlePieces: Obstacle[] = [];
 
-    constructor(game: Game, definition: ReifiableDef<BuildingDefinition>, position: Vector, orientation: Orientation, layer: number) {
+    constructor(game: Game, definition: ReifiableDef<BuildingDefinition>, position: Vector, orientation: Orientation, layer: number, rotation: number) {
         super(game, position);
 
         this.definition = Buildings.reify(definition);
 
         this.layer = layer;
 
-        this.rotation = Angle.orientationToRotation(this.orientation = orientation);
+        this.rotation = rotation;
+        this.orientation = 0;
         this._wallsToDestroy = this.definition.wallsToDestroy;
         this.spawnHitbox = this.definition.spawnHitbox.transform(this.position, 1, orientation);
-        this.hitbox = this.definition.hitbox?.transform(this.position, 1, orientation);
+        this.hitbox = this.definition.hitbox?.transform(this.position, 1, orientation, rotation);
         this.collidable = this.damageable = !!this.definition.hitbox;
 
         if (this.definition.ceilingHitbox !== undefined && this.definition.ceilingScopeEffect) {
@@ -72,6 +77,32 @@ export class Building extends BaseGameObject.derive(ObjectCategory.Building) {
                 errorSeq: false
             };
         }
+
+        const rotate = () => {
+            const speed = 0.5;
+            this.rotation += speed;
+            this.hitbox = this.definition.hitbox?.transform(this.position, 1, 0, this.rotation);
+            this.setDirty();
+            game.grid.updateObject(this);
+
+            for (const obstacle of this.children) {
+                const dist = Geometry.distance(obstacle.position, this.position);
+                const rot = Angle.betweenPoints(obstacle.position, this.position) + speed;
+                obstacle.position = Vec.add(this.position, Vec.rotate(Vec.create(dist, 0), rot));
+                obstacle.hitbox = obstacle.definition.hitbox.transform(obstacle.position, obstacle.scale, 0, obstacle.rotation);
+                obstacle.spawnHitbox = (obstacle.definition.spawnHitbox || obstacle.definition.hitbox).transform(obstacle.position, obstacle.scale, 0, obstacle.rotation);
+                obstacle.rotation += speed;
+                obstacle.setDirty();
+                game.grid.updateObject(obstacle);
+            }
+
+            this.game.addTimeout(() => {
+                rotate();
+            }, game.idealDt);
+        };
+        this.game.addTimeout(() => {
+            rotate();
+        }, 1000 / 40);
     }
 
     damageCeiling(damage = 1): void {
@@ -119,7 +150,7 @@ export class Building extends BaseGameObject.derive(ObjectCategory.Building) {
             full: {
                 definition: this.definition,
                 position: this.position,
-                orientation: this.orientation
+                rotation: this.rotation
             }
         };
     }

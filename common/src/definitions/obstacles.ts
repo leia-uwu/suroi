@@ -1,6 +1,6 @@
 import { Layers, TentTints, ZIndexes } from "../constants";
 import { type Variation } from "../typings";
-import { CircleHitbox, GroupHitbox, PolygonHitbox, RectangleHitbox, type Hitbox } from "../utils/hitbox";
+import { CircleHitbox, GroupHitbox, HitboxType, PolygonHitbox, RectangleHitbox, type Hitbox } from "../utils/hitbox";
 import { type DeepPartial, type GetEnumMemberName, type Mutable } from "../utils/misc";
 import { MapObjectSpawnMode, ObjectDefinitions, ObstacleSpecialRoles, type ObjectDefinition, type RawDefinition, type ReferenceOrRandom, type ReferenceTo } from "../utils/objectDefinitions";
 import { Vec, type Vector } from "../utils/vector";
@@ -4859,6 +4859,25 @@ export const Obstacles = ObjectDefinitions.withDefault<ObstacleDefinition>()(
             {
                 [inheritFrom]: "rsh_case_single",
                 idString: "rsh_case_dual"
+            },
+            {
+                idString: "test_polygon",
+                material: "crate",
+                hasLoot: false,
+                name: "Meow",
+                health: 2000,
+                scale: {
+                    spawnMax: 1,
+                    spawnMin: 1,
+                    destroy: 0.8
+                },
+                allowFlyover: FlyoverPref.Never,
+                rotationMode: RotationMode.Full,
+                hitbox: new PolygonHitbox([
+                    Vec.create(0, 0),
+                    Vec.create(10, 50),
+                    Vec.create(-10, 50)
+                ])
             }
             /* {
                 idString: "humvee",
@@ -4892,3 +4911,38 @@ export const Obstacles = ObjectDefinitions.withDefault<ObstacleDefinition>()(
         ) satisfies ReadonlyArray<RawDefinition<Missing>>;
     }
 );
+
+function rectToPoly(rect: RectangleHitbox) {
+    const { min, max } = rect;
+    const pts: Vector[] = [
+        Vec.create(min.x, min.y),
+        Vec.create(max.x, min.y),
+        Vec.create(max.x, max.y),
+        Vec.create(min.x, max.y)
+    ];
+    return new PolygonHitbox(pts);
+}
+
+function toPoly(hitbox: Hitbox) {
+    if (hitbox.type === HitboxType.Group) {
+        for (let i = 0; i < hitbox.hitboxes.length; i++) {
+            const h = hitbox.hitboxes[i];
+            if (h.type === HitboxType.Rect) {
+                hitbox.hitboxes[i] = rectToPoly(h);
+            }
+        }
+    } else if (hitbox.type === HitboxType.Rect) {
+        hitbox = rectToPoly(hitbox);
+    }
+    return hitbox;
+}
+
+for (const obstacle of Obstacles.definitions) {
+    if (obstacle.role === ObstacleSpecialRoles.Door) continue;
+    if (obstacle.isStair) continue;
+    // @ts-expect-error
+    obstacle.rotationMode = RotationMode.Full;
+    // obstacle.spawnHitbox ??= obstacle.hitbox.clone();
+    // @ts-expect-error
+    obstacle.hitbox = toPoly(obstacle.hitbox);
+}

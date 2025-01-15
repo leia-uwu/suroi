@@ -1,6 +1,6 @@
 import { Layers, TentTints, ZIndexes } from "../constants";
 import { type Orientation, type Variation } from "../typings";
-import { CircleHitbox, GroupHitbox, PolygonHitbox, RectangleHitbox, type Hitbox } from "../utils/hitbox";
+import { CircleHitbox, GroupHitbox, HitboxType, PolygonHitbox, RectangleHitbox, type Hitbox } from "../utils/hitbox";
 import { type DeepPartial } from "../utils/misc";
 import { inheritFrom, MapObjectSpawnMode, NullString, ObjectDefinitions, type ObjectDefinition, type RawDefinition, type ReferenceOrRandom, type ReferenceTo } from "../utils/objectDefinitions";
 import { pickRandomInArray, randomBoolean } from "../utils/random";
@@ -6907,3 +6907,55 @@ export const Buildings = ObjectDefinitions.withDefault<BuildingDefinition>()(
         ] satisfies ReadonlyArray<RawDefinition<Missing>>;
     }
 );
+
+function rectToPoly(rect: RectangleHitbox) {
+    const { min, max } = rect;
+    const pts: Vector[] = [
+        Vec.create(min.x, min.y),
+        Vec.create(max.x, min.y),
+        Vec.create(max.x, max.y),
+        Vec.create(min.x, max.y)
+    ];
+    return new PolygonHitbox(pts);
+}
+
+function toPoly(hitbox: Hitbox) {
+    if (hitbox.type === HitboxType.Group) {
+        for (let i = 0; i < hitbox.hitboxes.length; i++) {
+            const h = hitbox.hitboxes[i];
+            if (h.type === HitboxType.Rect) {
+                hitbox.hitboxes[i] = rectToPoly(h);
+            }
+        }
+    } else if (hitbox.type === HitboxType.Rect) {
+        hitbox = rectToPoly(hitbox);
+    }
+    return hitbox;
+}
+
+for (const building of Buildings.definitions) {
+    if (building.hitbox) {
+        // @ts-expect-error
+        building.hitbox = toPoly(building.hitbox);
+    }
+    for (const graphics of building.graphics) {
+        // @ts-expect-error
+        graphics.hitbox = toPoly(graphics.hitbox);
+    }
+    for (const graphics of building.groundGraphics) {
+        // @ts-expect-error
+        graphics.hitbox = toPoly(graphics.hitbox);
+    }
+    for (const floor of building.floors) {
+        // @ts-expect-error
+        floor.hitbox = toPoly(floor.hitbox);
+    }
+    if (building.ceilingHitbox) {
+        // @ts-expect-error
+        building.ceilingHitbox = toPoly(building.ceilingHitbox);
+    }
+    if (building.hitbox) {
+        // @ts-expect-error
+        building.hitbox = toPoly(building.hitbox);
+    }
+}

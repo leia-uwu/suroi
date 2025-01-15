@@ -44,7 +44,7 @@ export class GameMap {
 
     readonly terrain: Terrain;
 
-    private readonly _packet: Omit<MapPacketData, "objects"> & { readonly objects: Mutable<MapPacketData["objects"]> };
+    readonly _packet: Omit<MapPacketData, "objects"> & { readonly objects: Mutable<MapPacketData["objects"]> };
 
     /**
      * A cached map packet buffer
@@ -544,11 +544,14 @@ export class GameMap {
         definition: ReifiableDef<BuildingDefinition>,
         position: Vector,
         orientation?: Orientation,
-        layer?: number
+        layer?: number,
+        rotation?: number
     ): Building | undefined {
         definition = Buildings.reify(definition);
         orientation ??= GameMap.getRandomBuildingOrientation(definition.rotationMode);
         layer ??= 0;
+
+        rotation ??= randomRotation();
 
         if (
             this.game.pluginManager.emit(
@@ -562,7 +565,7 @@ export class GameMap {
             )
         ) return;
 
-        const building = new Building(this.game, definition, Vec.clone(position), orientation, layer);
+        const building = new Building(this.game, definition, Vec.clone(position), orientation, layer, rotation);
 
         for (const obstacleData of definition.obstacles) {
             let idString = getRandomIDString<
@@ -576,10 +579,12 @@ export class GameMap {
             }
 
             const obstacleDef = Obstacles.fromString(idString);
-            let obstacleRotation = obstacleData.rotation ?? GameMap.getRandomRotation(obstacleDef.rotationMode);
+            let obstacleRotation = Angle.orientationToRotation(obstacleData.rotation ?? 0);
 
             if (obstacleDef.rotationMode === RotationMode.Limited) {
                 obstacleRotation = Numeric.addOrientations(orientation, obstacleRotation as Orientation);
+            } else {
+                obstacleRotation = Angle.normalize(rotation + obstacleRotation);
             }
 
             let lootSpawnOffset: Vector | undefined;
@@ -588,7 +593,7 @@ export class GameMap {
 
             const obstacle = this.generateObstacle(
                 obstacleDef,
-                Vec.addAdjust(position, obstacleData.position, orientation),
+                Vec.add(position, Vec.rotate(obstacleData.position, rotation)),
                 {
                     rotation: obstacleRotation,
                     layer: layer + (obstacleData.layer ?? 0),
@@ -602,6 +607,7 @@ export class GameMap {
                 },
                 obstacleData.outdoors
             );
+            building.children.push(obstacle);
 
             if (
                 obstacle && (
@@ -633,16 +639,18 @@ export class GameMap {
             if (idString === NullString) continue;
 
             const finalOrientation = Numeric.addOrientations(orientation, subBuilding.orientation ?? 0);
+            const finalRotation = Angle.normalize(rotation + Angle.orientationToRotation(subBuilding.orientation ?? 0));
             this.generateBuilding(
                 idString,
-                Vec.addAdjust(position, subBuilding.position, finalOrientation),
+                Vec.add(position, Vec.rotate(subBuilding.position, finalRotation)),
                 finalOrientation,
-                layer + (subBuilding.layer ?? 0)
+                layer + (subBuilding.layer ?? 0),
+                finalRotation
             );
         }
 
         for (const floor of definition.floors) {
-            this.terrain.addFloor(floor.type, floor.hitbox.transform(position, 1, orientation), floor.layer ?? layer);
+            this.terrain.addFloor(floor.type, floor.hitbox.transform(position, 1, orientation, rotation), floor.layer ?? layer);
         }
 
         if (!definition.hideOnMap) this._packet.objects.push(building);

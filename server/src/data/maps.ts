@@ -830,6 +830,8 @@ const maps = {
                 map.generateObstacle(id, Vec.add(center, Vec.create(-posX, -posY)), { rotation: 0 });
             }
 
+            map.generateBuilding("porta_potty", center);
+
             genLoots(Vec.add(center, Vec.create(-70, 100)), 8, 8);
             genLoots(Vec.add(center, Vec.create(70, 100)), 8, 8);
             genLoots(Vec.add(center, Vec.create(-70, -100)), -8, 8);

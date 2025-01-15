@@ -66,6 +66,7 @@ export type CommonObjectMapping = {
     [ObjectCategory.Building]: {
         readonly definition: BuildingDefinition
         orientation: Orientation
+        rotation: number
     }
     [ObjectCategory.Decal]: {
         readonly definition: DecalDefinition

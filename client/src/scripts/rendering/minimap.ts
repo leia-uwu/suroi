@@ -2,8 +2,8 @@ import { GameConstants, GasState, Layer, ObjectCategory, ZIndexes } from "@commo
 import { type MapPingDefinition } from "@common/definitions/mapPings";
 import { type MapPacketData } from "@common/packets/mapPacket";
 import { type PingSerialization, type PlayerPingSerialization } from "@common/packets/updatePacket";
-import { RectangleHitbox } from "@common/utils/hitbox";
-import { Numeric } from "@common/utils/math";
+import { GroupHitbox, HitboxType, PolygonHitbox, RectangleHitbox } from "@common/utils/hitbox";
+import { Geometry, Numeric } from "@common/utils/math";
 import { FloorTypes, River, Terrain } from "@common/utils/terrain";
 import { Vec, type Vector } from "@common/utils/vector";
 import FontFaceObserver from "fontfaceobserver";
@@ -225,9 +225,11 @@ export class Minimap {
             if (!building.isBuilding) continue;
 
             const definition = building.definition;
+            const guh = new GroupHitbox(...definition.groundGraphics.map(g => g.hitbox)).transform(building.position, 1, 0, building.rotation);
+            let i = 0;
             for (const ground of definition.groundGraphics) {
                 ctx.beginPath();
-                drawGroundGraphics(ground.hitbox.transform(building.position, 1, building.orientation), ctx, scale);
+                drawGroundGraphics(guh.hitboxes[i++], ctx, scale);
                 ctx.closePath();
                 ctx.fill(ground.color);
             }
@@ -295,36 +297,46 @@ export class Minimap {
                     const definition = mapObject.definition;
                     const rotation = mapObject.rotation;
 
+                    const floorContainer = new Container({
+                        position: mapObject.position,
+                        rotation: mapObject.rotation
+                    });
+
                     for (const image of definition.floorImages) {
                         const sprite = new SuroiSprite(image.key)
-                            .setVPos(Vec.addAdjust(mapObject.position, image.position, mapObject.orientation))
-                            .setRotation(rotation + (image.rotation ?? 0))
+                            .setVPos(image.position)
+                            .setRotation((image.rotation ?? 0))
                             .setZIndex(ZIndexes.BuildingsFloor);
 
                         if (image.tint !== undefined) sprite.setTint(image.tint);
                         sprite.scale = Vec.scale(image.scale ?? Vec.create(1, 1), 1 / PIXI_SCALE);
-                        mapRender.addChild(sprite);
+                        floorContainer.addChild(sprite);
                     }
+                    mapRender.addChild(floorContainer);
 
+                    const ceilingContainer = new Container({
+                        position: mapObject.position,
+                        rotation: mapObject.rotation
+                    });
                     for (const image of definition.ceilingImages) {
                         const sprite = new SuroiSprite(image.key)
-                            .setVPos(Vec.addAdjust(mapObject.position, image.position, mapObject.orientation))
-                            .setRotation(rotation + (image.rotation ?? 0))
+                            .setVPos(image.position)
+                            .setRotation((image.rotation ?? 0))
                             .setZIndex(definition.ceilingZIndex);
 
                         sprite.scale.set(1 / PIXI_SCALE);
                         sprite.scale.x *= image.scale?.x ?? 1;
                         sprite.scale.y *= image.scale?.y ?? 1;
                         if (image.tint !== undefined) sprite.setTint(image.tint);
-                        mapRender.addChild(sprite);
+                        ceilingContainer.addChild(sprite);
                     }
-
+                    mapRender.addChild(ceilingContainer);
                     if (definition.graphics.length) {
                         const ctx = new Graphics();
                         ctx.zIndex = definition.graphicsZIndex;
                         for (const graphics of definition.graphics) {
                             ctx.beginPath();
-                            drawGroundGraphics(graphics.hitbox.transform(mapObject.position, 1, mapObject.orientation), ctx, 1);
+                            drawGroundGraphics(graphics.hitbox.transform(mapObject.position, 1, mapObject.orientation, mapObject.rotation), ctx, 1);
                             ctx.closePath();
                             ctx.fill(graphics.color);
                         }
@@ -462,7 +474,7 @@ export class Minimap {
         for (const object of this._objects) {
             if (object.isBuilding) {
                 for (const floor of object.definition.floors) {
-                    const hitbox = floor.hitbox.transform(object.position, 1, object.orientation);
+                    const hitbox = floor.hitbox.transform(object.position, 1, object.orientation, object.rotation);
                     this._terrain.addFloor(floor.type, hitbox, floor.layer ?? object.layer ?? 0);
                 }
             }

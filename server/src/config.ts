@@ -7,7 +7,8 @@ export const Config = {
     host: "127.0.0.1",
     port: 8000,
 
-    map: "singleObstacle:test_polygon",
+    // map: "singleBuilding:refinery",
+    map: "normal",
 
     spawn: { mode: SpawnMode.Default },
 
@@ -24,6 +25,7 @@ export const Config = {
     plugins: [],
 
     disableLobbyClearing: true,
+    // disableBuildingCheck: true,
 
     roles: {
         developr: { password: "developr", isDev: true },

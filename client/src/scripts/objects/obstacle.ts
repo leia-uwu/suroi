@@ -369,20 +369,12 @@ export class Obstacle extends GameObject.derive(ObjectCategory.Obstacle) {
         this.updateZIndex();
 
         if (this._door === undefined) {
-            if (definition.hitbox.type === HitboxType.Polygon
-                && definition.rotationMode === RotationMode.Full) {
-                this.hitbox = definition.hitbox.transformWithAngle(
-                    this.position,
-                    this.scale,
-                    this.rotation
-                );
-            } else {
-                this.hitbox = definition.hitbox.transform(
-                    this.position,
-                    this.scale,
-                    this.orientation
-                );
-            }
+            this.hitbox = definition.hitbox.transform(
+                this.position,
+                this.scale,
+                this.orientation,
+                this.rotation
+            );
         }
 
         const pos = toPixiCoords(this.position);

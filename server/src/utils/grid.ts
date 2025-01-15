@@ -13,7 +13,7 @@ import { type GameObject, type ObjectMapping } from "../objects/gameObject";
 export class Grid {
     readonly width: number;
     readonly height: number;
-    readonly cellSize = 32;
+    readonly cellSize = 128;
 
     //                        X     Y     Object ID
     //                      __^__ __^__     ___^__
